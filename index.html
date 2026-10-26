@@ -18,7 +18,7 @@
       <p>Siege of Hive Tertius</p>
     </div>
     <div class="stats">
-      <div class="stat faith" id="faithBox"><span>Faith</span><b id="faith">150</b></div>
+      <div class="stat faith" id="faithBox"><span>Faith</span><b id="faith">100</b></div>
       <div class="stat"><span>Requisition</span><b id="money">700</b></div>
       <div class="stat"><span>Wave</span><b id="wave">0 / 40</b></div>
     </div>
@@ -38,11 +38,14 @@
         </div>
       </div>
       <div class="controls">
-        <button class="primary" id="startBtn">Send the Swarm<kbd>Space</kbd></button>
+        <button class="primary" id="startBtn">Next Wave<kbd>Space</kbd></button>
         <button id="speedBtn">Speed 1×<kbd>F</kbd></button>
         <button id="autoBtn">Auto-wave: off</button>
         <button id="pauseBtn">Pause<kbd>P</kbd></button>
         <button id="muteBtn">Sound: on</button>
+        <label class="chapter-pick" for="chapter">Chapter
+          <select id="chapter"></select>
+        </label>
       </div>
     </div>
 
@@ -54,9 +57,10 @@
       <section class="card panel" id="panel"></section>
       <section class="card help">
         <h2>Orders</h2>
-        <p>Pick a defender, then click open ground to deploy it. Click a deployed defender to upgrade, change its targeting, or sell it.</p>
-        <p>A Tyranid hive fleet is seeding the hive world with spores. Each spore you pop releases the weaker spore inside. Any that reach the gate drain your Faith.</p>
-        <p><b>Watch for:</b> camouflaged spores (need Psykers or an auspex), Carnifex spores (need armour-piercing weapons), Zoanthrope spores (shrug off explosions), Pyrovore spores (shrug off fire).</p>
+        <p>Pick a unit, then click open ground to deploy it. Click a deployed unit to open its skill tree, change its targeting, or sell it.</p>
+        <p>Every unit has one shared upgrade, then two doctrines. Choosing a doctrine locks the other.</p>
+        <p><b>Armour vs AP:</b> each point of armour above a weapon's AP removes one damage, down to a 20% minimum. Psychic attacks ignore armour.</p>
+        <p><b>Fliers</b> take the short route across the sky. Whirlwinds and Dreadnought fists can't hit them.</p>
       </section>
     </aside>
   </div>
