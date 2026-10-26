@@ -1,6 +1,6 @@
 'use strict';
 /*
- * Bloomfall — a grimdark balloon tower defense.
+ * Bloomfall — a grimdark balloon tower defense against a Tyranid spore swarm.
  * Plain canvas + DOM, no dependencies. The simulation runs on a fixed 60 Hz tick;
  * rendering happens once per animation frame.
  */
@@ -9,7 +9,7 @@
   const FINAL_WAVE = 40;
   const START_MONEY = 700;
   const START_LIVES = 150;
-  const SPEED_BASE = 1.35; // px per tick for a speed-1.0 bloom
+  const SPEED_BASE = 1.35; // px per tick for a speed-1.0 spore
 
   const canvas = document.getElementById('board');
   const ctx = canvas.getContext('2d');
@@ -82,19 +82,19 @@
     return m;
   }
 
-  // ------------------------------------------------------------------- blooms
+  // ------------------------------------------------------------------- spores
   // Each tier pops into its `kids`. RBE ("red bloom equivalent") is the Faith lost if it leaks.
   const TIERS = [
-    { name: 'Cultist Bloom', color: '#c8322a', speed: 1.0, hp: 1, r: 11, kids: [] },
-    { name: 'Heretek Bloom', color: '#2f6fd6', speed: 1.4, hp: 1, r: 11.5, kids: [0] },
-    { name: 'Plague Bloom', color: '#6f9a2c', speed: 1.8, hp: 1, r: 12, kids: [1] },
-    { name: 'Warpfire Bloom', color: '#e5b923', speed: 2.7, hp: 1, r: 12, kids: [2] },
-    { name: 'Excess Bloom', color: '#d9509f', speed: 3.0, hp: 1, r: 12.5, kids: [3] },
-    { name: 'Void Bloom', color: '#26222f', speed: 1.8, hp: 1, r: 9.5, kids: [4, 4], immune: ['explosive'], note: 'Immune to explosions' },
-    { name: 'Changeling Bloom', color: '#c4e8f4', speed: 2.0, hp: 1, r: 9.5, kids: [4, 4], immune: ['fire'], note: 'Immune to fire' },
-    { name: 'Ork Iron Bloom', color: '#7d7f83', speed: 1.0, hp: 1, r: 13, kids: [5, 6], armored: true, note: 'Armoured' },
-    { name: 'Daemon Engine', color: '#8a4322', speed: 2.4, hp: 10, r: 14, kids: [7, 7], note: 'Takes 10 hits' },
-    { name: 'Warp Titan', color: '#4b1460', speed: 0.5, hp: 240, r: 34, kids: [8, 8, 8, 8], boss: true, reward: 100, note: 'Boss' },
+    { name: 'Spore Mine', color: '#c8433a', speed: 1.0, hp: 1, r: 11, kids: [] },
+    { name: 'Termagant Spore', color: '#3a6fc4', speed: 1.4, hp: 1, r: 11.5, kids: [0] },
+    { name: 'Hormagaunt Spore', color: '#6f9a2c', speed: 1.8, hp: 1, r: 12, kids: [1] },
+    { name: 'Gargoyle Spore', color: '#e0b42a', speed: 2.7, hp: 1, r: 12, kids: [2] },
+    { name: 'Genestealer Spore', color: '#d9509f', speed: 3.0, hp: 1, r: 12.5, kids: [3] },
+    { name: 'Zoanthrope Spore', color: '#2d2a3c', speed: 1.8, hp: 1, r: 9.5, kids: [4, 4], immune: ['explosive'], note: 'Warp field: immune to explosions' },
+    { name: 'Pyrovore Spore', color: '#e8d6b8', speed: 2.0, hp: 1, r: 9.5, kids: [4, 4], immune: ['fire'], note: 'Immune to fire' },
+    { name: 'Carnifex Spore', color: '#9a8f7c', speed: 1.0, hp: 1, r: 13, kids: [5, 6], armored: true, note: 'Bone armour: needs armour-piercing' },
+    { name: 'Tervigon Brood-Sac', color: '#a0506a', speed: 2.4, hp: 10, r: 14, kids: [7, 7], note: 'Takes 10 hits' },
+    { name: 'Hierophant Bio-Titan', color: '#4b1460', speed: 0.5, hp: 240, r: 34, kids: [8, 8, 8, 8], boss: true, reward: 100, note: 'Boss' },
   ];
   TIERS.forEach((t) => { t.rbe = t.hp + t.kids.reduce((s, k) => s + TIERS[k].rbe, 0); });
 
@@ -108,7 +108,7 @@
       ups: [
         { name: 'Hot-Shot Packs', cost: 120, desc: '+1 pierce, +10 range', apply: (s) => { s.pierce += 1; s.range += 10; } },
         { name: 'Veteran Sergeant', cost: 200, desc: 'Fires 35% faster', apply: (s) => { s.rate *= 0.65; } },
-        { name: 'Auspex Scanner', cost: 180, desc: 'Can see warp-veiled blooms', apply: (s) => { s.camo = true; } },
+        { name: 'Auspex Scanner', cost: 180, desc: 'Can see camouflaged spores', apply: (s) => { s.camo = true; } },
         { name: 'Storm Volley', cost: 950, desc: 'Three shots per volley, +1 damage', apply: (s) => { s.count = 3; s.spread = 0.2; s.dmg += 1; s.rate *= 0.85; } },
       ],
     },
@@ -119,7 +119,7 @@
       ups: [
         { name: 'Extended Ammo Belts', cost: 300, desc: 'Fires 30% faster', apply: (s) => { s.rate *= 0.7; } },
         { name: 'Penetrator Rounds', cost: 450, desc: 'Pierces armour, +1 pierce', apply: (s) => { s.ap = true; s.pierce += 1; } },
-        { name: 'Targeting Auspex', cost: 300, desc: 'Sees warp-veiled blooms, +25 range', apply: (s) => { s.camo = true; s.range += 25; } },
+        { name: 'Targeting Auspex', cost: 300, desc: 'Sees camouflaged spores, +25 range', apply: (s) => { s.camo = true; s.range += 25; } },
         { name: 'Twin-Linked Barrels', cost: 1600, desc: 'Two streams, +1 damage', apply: (s) => { s.count = 2; s.spread = 0.08; s.dmg += 1; } },
       ],
     },
@@ -152,16 +152,16 @@
       ups: [
         { name: 'Focusing Crystals', cost: 400, desc: '+4 damage', apply: (s) => { s.dmg += 4; } },
         { name: 'Capacitor Banks', cost: 600, desc: 'Fires 40% faster', apply: (s) => { s.rate *= 0.6; } },
-        { name: 'Night-Fighting Optics', cost: 350, desc: 'Sees warp-veiled blooms', apply: (s) => { s.camo = true; } },
+        { name: 'Night-Fighting Optics', cost: 350, desc: 'Sees camouflaged spores', apply: (s) => { s.camo = true; } },
         { name: 'Annihilator Lance', cost: 3000, desc: '+20 damage, beam pierces 5', apply: (s) => { s.dmg += 20; s.pierce += 4; s.rate *= 0.8; } },
       ],
     },
     psyker: {
       name: 'Sanctioned Psyker', key: '6', cost: 900, r: 14, color: '#3d4c8a',
-      blurb: 'Chain lightning. Sees through the warp, ignores armour.',
+      blurb: 'Chain lightning. Sees camouflaged spores, ignores armour.',
       base: { kind: 'chain', dtype: 'psychic', ap: true, camo: true, range: 145, rate: 55, dmg: 1, chain: 4 },
       ups: [
-        { name: 'Warp Conduit', cost: 450, desc: 'Arcs to 3 more blooms', apply: (s) => { s.chain += 3; } },
+        { name: 'Warp Conduit', cost: 450, desc: 'Arcs to 3 more spores', apply: (s) => { s.chain += 3; } },
         { name: 'Overcharged Mind', cost: 700, desc: '+1 damage', apply: (s) => { s.dmg += 1; } },
         { name: 'Psychic Storm', cost: 900, desc: 'Fires 40% faster, +20 range', apply: (s) => { s.rate *= 0.6; s.range += 20; } },
         { name: 'Alpha-Level Psyker', cost: 3200, desc: 'Arcs to 8 more, +2 damage', apply: (s) => { s.chain += 8; s.dmg += 2; } },
@@ -174,7 +174,7 @@
       ups: [
         { name: 'Rousing Speech', cost: 300, desc: '+40 aura radius', apply: (s) => { s.range += 40; } },
         { name: 'Summary Execution', cost: 900, desc: 'Nearby defenders fire 25% faster', apply: (s) => { s.buffRate = 0.75; } },
-        { name: 'Vox-Auspex Link', cost: 700, desc: 'Nearby defenders see warp-veiled blooms', apply: (s) => { s.buffCamo = true; } },
+        { name: 'Vox-Auspex Link', cost: 700, desc: 'Nearby defenders see camouflaged spores', apply: (s) => { s.buffCamo = true; } },
         { name: 'Lord Commissar', cost: 2500, desc: 'Nearby defenders +1 damage, +12% range', apply: (s) => { s.buffDmg = 1; s.buffRange = 1.12; } },
       ],
     },
@@ -357,7 +357,7 @@
     src.pops += 1;
     burst(e.x, e.y, t.color, t.boss ? 60 : 8, t.boss ? 5 : 2.6);
     sfx.pop();
-    if (t.boss) { sfx.boom(); floatText(e.x, e.y, 'TITAN SLAIN', '#f0c96a'); }
+    if (t.boss) { sfx.boom(); floatText(e.x, e.y, 'BIO-TITAN SLAIN', '#f0c96a'); }
     const kids = t.kids.map((k, i) => spawnEnemy(k, e.d - i * 9, e.veiled));
     if (hitSet) for (const k of kids) hitSet.add(k.id);
     if (overflow > 0 && kids.length) damage(kids[0], overflow, dtype, src, hitSet);
@@ -547,9 +547,9 @@
     sfx.horn();
     if (!state.warnedVeil && state.queue.some((q) => q.veiled)) {
       state.warnedVeil = true;
-      toast('Warp-veiled blooms incoming. Only Psykers and auspex-equipped defenders can see them.', 5000);
+      toast('Camouflaged spores incoming. Only Psykers and auspex-equipped defenders can see them.', 5000);
     } else if (state.queue.some((q) => TIERS[q.tier].boss)) {
-      toast('A Warp Titan approaches the gate.', 3500);
+      toast('A Hierophant Bio-Titan approaches the gate.', 3500);
     }
     updateHud(true);
     renderPanel();
@@ -567,7 +567,7 @@
     } catch (e) { /* storage unavailable */ }
     if (state.wave === FINAL_WAVE && !state.freeplay) {
       state.won = true;
-      showOverlay('The Hive Holds', `All ${FINAL_WAVE} waves repelled with ${state.lives} Faith remaining. The Emperor protects.`, [
+      showOverlay('The Hive Holds', `The hive fleet is broken after ${FINAL_WAVE} waves, with ${state.lives} Faith remaining. The Emperor protects.`, [
         ['Keep fighting (freeplay)', () => { state.freeplay = true; hideOverlay(); }],
         ['New campaign', restart],
       ]);
@@ -658,7 +658,7 @@
     if (state.lives <= 0) {
       state.lives = 0;
       state.over = true;
-      showOverlay('The Hive Falls', `The blooms breached the gate on wave ${state.wave + 1}. ${bestText()}`, [['Begin again', restart]]);
+      showOverlay('The Hive Falls', `The swarm breached the gate on wave ${state.wave + 1}. ${bestText()}`, [['Begin again', restart]]);
     } else if (state.waveActive && !state.queue.length && !state.enemies.length) {
       endWave();
     }
@@ -709,6 +709,13 @@
         c.fillStyle = 'rgba(255,255,255,0.06)'; c.fillRect(bx, by, w, 2);
       }
     }
+    // Tyranid bio-creep spreading from the spawning pool
+    for (let i = 0; i < 70; i++) {
+      const a = rng() * Math.PI * 0.9 - Math.PI * 0.45, dist = Math.pow(rng(), 1.6) * 330;
+      const x = Math.cos(a) * dist, y = 90 + Math.sin(a) * dist * 1.1, r = 6 + rng() * 22 * (1 - dist / 400);
+      c.fillStyle = `rgba(${90 + rng() * 40 | 0},${20 + rng() * 20 | 0},${80 + rng() * 40 | 0},${0.25 + rng() * 0.25})`;
+      c.beginPath(); c.ellipse(x, y, r, r * 0.7, rng() * 3, 0, Math.PI * 2); c.fill();
+    }
     // road
     const trace = () => { c.beginPath(); PATH_PTS.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); };
     c.lineJoin = 'round'; c.lineCap = 'round';
@@ -729,85 +736,125 @@
     c.fillStyle = v; c.fillRect(0, 0, W, H);
   }
 
-  // ------------------------------------------------------------ bloom sprites
+  // ------------------------------------------------------------ spore sprites
   const SPR_SCALE = 2;
   const sprites = TIERS.map((t, i) => (t.boss ? null : makeBloomSprite(i)));
   function makeBloomSprite(i) {
     const t = TIERS[i], r = t.r;
-    const w = Math.ceil(r * 2 + 10), h = Math.ceil(r * 3.4 + 8);
+    const w = Math.ceil(r * 3.4 + 6), h = Math.ceil(r * 3.6 + 8);
     const cv = document.createElement('canvas');
     cv.width = w * SPR_SCALE; cv.height = h * SPR_SCALE;
     const c = cv.getContext('2d');
     c.scale(SPR_SCALE, SPR_SCALE);
-    const x = w / 2, y = r * 1.15 + 4;
-    // string
-    c.strokeStyle = 'rgba(25,18,12,0.75)'; c.lineWidth = 1;
-    c.beginPath(); c.moveTo(x, y + r * 1.2); c.quadraticCurveTo(x + 4, y + r * 1.6, x - 1, y + r * 2.1); c.stroke();
-    // knot
-    c.fillStyle = shade(t.color, -45);
-    c.beginPath(); c.moveTo(x - 3, y + r * 1.22); c.lineTo(x + 3, y + r * 1.22); c.lineTo(x, y + r * 1.08); c.fill();
-    // body
-    const g = c.createRadialGradient(x - r * 0.35, y - r * 0.45, r * 0.1, x, y, r * 1.25);
+    const x = w / 2, y = r * 1.6 + 4;
+    const CHITIN = i === 7 ? '#d9cfb4' : '#3b1f4a';
+    // gargoyle wings sit behind the body
+    if (i === 3) {
+      c.fillStyle = '#5a2a5e';
+      for (const sd of [-1, 1]) {
+        c.beginPath(); c.moveTo(x + sd * r * 0.5, y - r * 0.4);
+        c.lineTo(x + sd * r * 1.65, y - r * 0.9); c.lineTo(x + sd * r * 1.45, y - r * 0.1);
+        c.lineTo(x + sd * r * 1.6, y + r * 0.35); c.lineTo(x + sd * r * 0.6, y + r * 0.2); c.fill();
+      }
+    }
+    // dangling feeder tendrils
+    c.strokeStyle = shade(t.color, -70); c.lineWidth = 1.4; c.lineCap = 'round';
+    for (const k of [-0.45, 0, 0.45]) {
+      c.beginPath(); c.moveTo(x + k * r, y + r * 0.9);
+      c.quadraticCurveTo(x + k * r * 1.5 + 3, y + r * 1.45, x + k * r * 1.1 - 1, y + r * 2.05); c.stroke();
+    }
+    // fleshy sac
+    const g = c.createRadialGradient(x - r * 0.35, y - r * 0.2, r * 0.1, x, y, r * 1.25);
     g.addColorStop(0, shade(t.color, 60)); g.addColorStop(0.55, t.color); g.addColorStop(1, shade(t.color, -55));
     c.fillStyle = g;
     c.beginPath(); c.ellipse(x, y, r, r * 1.15, 0, 0, Math.PI * 2); c.fill();
     c.strokeStyle = 'rgba(0,0,0,0.45)'; c.lineWidth = 1; c.stroke();
-    // emblems
+    // veins
+    c.strokeStyle = 'rgba(60,10,30,0.35)'; c.lineWidth = 0.8;
+    for (const k of [-0.5, 0.15, 0.6]) {
+      c.beginPath(); c.moveTo(x + k * r, y + r * 0.95); c.quadraticCurveTo(x + k * r * 0.4 + 2, y + r * 0.3, x + k * r * 0.7, y - r * 0.1); c.stroke();
+    }
+    // chitin carapace cap with plate seams
+    const a0 = Math.PI * 1.06, a1 = Math.PI * 1.94;
+    c.fillStyle = CHITIN;
+    c.beginPath();
+    c.ellipse(x, y, r * 1.04, r * 1.2, 0, a0, a1);
+    c.quadraticCurveTo(x, y - r * 0.05, x + Math.cos(a0) * r * 1.04, y + Math.sin(a0) * r * 1.2);
+    c.fill();
+    c.strokeStyle = i === 7 ? 'rgba(90,70,50,0.7)' : 'rgba(150,100,170,0.6)'; c.lineWidth = 1;
+    for (const k of [-0.35, 0.35]) { c.beginPath(); c.moveTo(x + k * r, y - r * 0.32); c.lineTo(x + k * r * 0.8, y - r * 1.05); c.stroke(); }
+    c.fillStyle = 'rgba(255,255,255,0.22)';
+    c.beginPath(); c.ellipse(x - r * 0.35, y - r * 0.8, r * 0.28, r * 0.12, -0.3, 0, Math.PI * 2); c.fill();
+    // per-organism details
     c.save();
     c.translate(x, y);
-    const ink = 'rgba(15,10,8,0.55)';
+    const eyes = (col, sz) => {
+      c.fillStyle = col;
+      c.beginPath(); c.arc(-r * 0.28, -r * 0.12, sz, 0, Math.PI * 2); c.arc(r * 0.28, -r * 0.12, sz, 0, Math.PI * 2); c.fill();
+    };
+    const claws = (col, n) => {
+      c.strokeStyle = col; c.lineWidth = 1.6; c.lineCap = 'round';
+      for (let k = 0; k < n; k++) for (const sd of [-1, 1]) {
+        const yy = r * (0.05 + k * 0.4);
+        c.beginPath(); c.moveTo(sd * r * 0.9, yy); c.quadraticCurveTo(sd * r * 1.5, yy - r * 0.3, sd * r * 1.35, yy + r * 0.35); c.stroke();
+      }
+    };
     switch (i) {
-      case 1: { // cog
-        c.strokeStyle = ink; c.lineWidth = 1.6;
-        c.beginPath(); c.arc(0, 0, r * 0.32, 0, Math.PI * 2); c.stroke();
-        for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; c.beginPath(); c.moveTo(Math.cos(a) * r * 0.32, Math.sin(a) * r * 0.32); c.lineTo(Math.cos(a) * r * 0.5, Math.sin(a) * r * 0.5); c.stroke(); }
+      case 0: { // spore mine spines
+        c.strokeStyle = '#3b1f4a'; c.lineWidth = 1.5;
+        for (const a of [0.15, 0.5, 0.85]) { const an = a * Math.PI; c.beginPath(); c.moveTo(Math.cos(an) * r, Math.sin(an) * r); c.lineTo(Math.cos(an) * r * 1.35, Math.sin(an) * r * 1.35); c.stroke(); }
         break;
       }
-      case 2: { // three pocks
-        c.fillStyle = 'rgba(40,50,10,0.6)';
-        [[0, -0.3], [-0.3, 0.22], [0.3, 0.22]].forEach(([a, b]) => { c.beginPath(); c.arc(a * r, b * r, r * 0.15, 0, Math.PI * 2); c.fill(); });
+      case 1: eyes('#ffd54a', 1.6); break;
+      case 2: { // acid sacs + scything claws
+        eyes('#ffd54a', 1.4);
+        c.fillStyle = 'rgba(180,230,60,0.75)';
+        [[-0.3, 0.45], [0.3, 0.45], [0, 0.7]].forEach(([a, b]) => { c.beginPath(); c.arc(a * r, b * r, r * 0.13, 0, Math.PI * 2); c.fill(); });
+        claws('#e8dcc0', 1);
         break;
       }
-      case 3: { // flame
-        c.fillStyle = 'rgba(160,40,10,0.55)';
-        c.beginPath(); c.moveTo(0, -r * 0.5); c.quadraticCurveTo(r * 0.4, 0, 0, r * 0.45); c.quadraticCurveTo(-r * 0.4, 0, 0, -r * 0.5); c.fill();
+      case 3: eyes('#ff6b3b', 1.5); break;
+      case 4: { // four-armed genestealer
+        eyes('#ffe36b', 1.6);
+        claws('#2a1236', 2);
         break;
       }
-      case 4: case 5: case 6: { // eight-pointed warp star / eye
-        if (i === 6) {
-          c.fillStyle = 'rgba(40,80,120,0.7)';
-          c.beginPath(); c.ellipse(0, 0, r * 0.5, r * 0.25, 0, 0, Math.PI * 2); c.fill();
-          c.fillStyle = '#ffe36b'; c.beginPath(); c.arc(0, 0, r * 0.14, 0, Math.PI * 2); c.fill();
-        } else {
-          c.strokeStyle = i === 5 ? 'rgba(200,120,255,0.75)' : ink; c.lineWidth = 1.4;
-          for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.55); c.stroke(); }
-        }
+      case 5: { // zoanthrope: swollen brain + warp glow
+        c.strokeStyle = 'rgba(170,255,140,0.55)'; c.lineWidth = 1;
+        for (let k = 0; k < 3; k++) { c.beginPath(); c.arc(0, -r * 0.55, r * (0.25 + k * 0.18), Math.PI * 1.1, Math.PI * 1.9); c.stroke(); }
+        eyes('#9dff7a', 1.8);
         break;
       }
-      case 7: { // riveted plates + teeth
-        c.strokeStyle = 'rgba(30,30,30,0.7)'; c.lineWidth = 1.5;
-        c.beginPath(); c.moveTo(-r, -r * 0.2); c.lineTo(r, -r * 0.2); c.stroke();
-        c.beginPath(); c.moveTo(-r * 0.9, r * 0.4); c.lineTo(r * 0.9, r * 0.4); c.stroke();
-        c.fillStyle = 'rgba(220,220,220,0.8)';
-        for (let k = -2; k <= 2; k++) { c.beginPath(); c.arc(k * r * 0.35, -r * 0.2, 1.1, 0, Math.PI * 2); c.fill(); }
-        c.fillStyle = '#e8e0c8';
-        for (let k = -1; k <= 1; k++) { c.beginPath(); c.moveTo(k * 4 - 2, r * 0.42); c.lineTo(k * 4 + 2, r * 0.42); c.lineTo(k * 4, r * 0.7); c.fill(); }
+      case 6: { // pyrovore flame vents
+        c.fillStyle = '#ff8a2a';
+        [[-0.4, 0.3], [0, 0.55], [0.4, 0.3]].forEach(([a, b]) => { c.beginPath(); c.arc(a * r, b * r, r * 0.14, 0, Math.PI * 2); c.fill(); });
+        eyes('#3b1f4a', 1.4);
         break;
       }
-      case 8: { // horns + brass band
-        c.fillStyle = '#d8c79a';
-        c.beginPath(); c.moveTo(-r * 0.6, -r * 0.8); c.quadraticCurveTo(-r * 1.2, -r * 1.3, -r * 0.9, -r * 1.6); c.quadraticCurveTo(-r * 0.7, -r * 1.1, -r * 0.25, -r * 1.0); c.fill();
-        c.beginPath(); c.moveTo(r * 0.6, -r * 0.8); c.quadraticCurveTo(r * 1.2, -r * 1.3, r * 0.9, -r * 1.6); c.quadraticCurveTo(r * 0.7, -r * 1.1, r * 0.25, -r * 1.0); c.fill();
-        c.strokeStyle = '#b48a3a'; c.lineWidth = 2.5;
-        c.beginPath(); c.ellipse(0, 0, r * 0.98, r * 0.3, 0, 0, Math.PI); c.stroke();
-        c.fillStyle = '#ff4b2b'; c.beginPath(); c.arc(-r * 0.3, -r * 0.25, 1.8, 0, Math.PI * 2); c.arc(r * 0.3, -r * 0.25, 1.8, 0, Math.PI * 2); c.fill();
+      case 7: { // carnifex: bone plates, tusks, scything talons
+        c.strokeStyle = 'rgba(70,55,40,0.8)'; c.lineWidth = 1.4;
+        c.beginPath(); c.moveTo(-r * 0.95, r * 0.3); c.quadraticCurveTo(0, r * 0.5, r * 0.95, r * 0.3); c.stroke();
+        c.fillStyle = '#efe6cf';
+        for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(sd * r * 0.25, r * 0.05); c.lineTo(sd * r * 0.12, r * 0.05); c.lineTo(sd * r * 0.32, r * 0.55); c.fill(); }
+        eyes('#ff4b2b', 1.6);
+        claws('#d9cfb4', 1);
+        break;
+      }
+      case 8: { // tervigon: crest spines + brood sacs full of gaunts
+        c.fillStyle = '#3b1f4a';
+        for (let k = -2; k <= 2; k++) { c.beginPath(); c.moveTo(k * r * 0.3 - 2.5, -r * 1.0); c.lineTo(k * r * 0.33, -r * 1.55 + Math.abs(k) * r * 0.15); c.lineTo(k * r * 0.3 + 2.5, -r * 1.0); c.fill(); }
+        c.fillStyle = 'rgba(240,200,210,0.55)';
+        [[-0.45, 0.35], [0.05, 0.6], [0.5, 0.3]].forEach(([a, b]) => { c.beginPath(); c.ellipse(a * r, b * r, r * 0.22, r * 0.17, 0, 0, Math.PI * 2); c.fill(); });
+        c.fillStyle = '#3a6fc4';
+        [[-0.45, 0.35], [0.05, 0.6], [0.5, 0.3]].forEach(([a, b]) => { c.beginPath(); c.arc(a * r, b * r, r * 0.08, 0, Math.PI * 2); c.fill(); });
+        eyes('#ffd54a', 1.7);
         break;
       }
     }
     c.restore();
     // highlight
     c.fillStyle = 'rgba(255,255,255,0.32)';
-    c.beginPath(); c.ellipse(x - r * 0.38, y - r * 0.48, r * 0.2, r * 0.32, -0.5, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.ellipse(x - r * 0.5, y + r * 0.2, r * 0.14, r * 0.26, -0.3, 0, Math.PI * 2); c.fill();
     return { cv, w, h, ox: x, oy: y };
   }
 
@@ -823,7 +870,7 @@
     c.restore();
     if (e.veiled) {
       c.save();
-      c.strokeStyle = 'rgba(178,90,214,0.8)'; c.lineWidth = 1.5; c.setLineDash([3, 4]);
+      c.strokeStyle = 'rgba(160,210,120,0.75)'; c.lineWidth = 1.5; c.setLineDash([3, 4]);
       c.lineDashOffset = -state.time * 0.5;
       c.beginPath(); c.arc(e.x, e.y + bob, t.r + 4, 0, Math.PI * 2); c.stroke();
       c.restore();
@@ -851,29 +898,40 @@
     // shadow
     c.fillStyle = 'rgba(0,0,0,0.35)';
     c.beginPath(); c.ellipse(6, 10, r * 1.5, r * 0.8, 0, 0, Math.PI * 2); c.fill();
-    // spikes
-    c.fillStyle = '#2a0c33';
-    for (let k = 0; k < 10; k++) {
-      const a = (k / 10) * Math.PI * 2;
-      c.beginPath();
-      c.moveTo(Math.cos(a - 0.15) * r * 1.4, Math.sin(a - 0.15) * r * 0.82);
-      c.lineTo(Math.cos(a) * r * 1.85, Math.sin(a) * r * 1.15);
-      c.lineTo(Math.cos(a + 0.15) * r * 1.4, Math.sin(a + 0.15) * r * 0.82);
-      c.fill();
+    // six striding legs
+    const step = state.time * 0.12;
+    c.strokeStyle = '#d9cfb4'; c.lineWidth = 4; c.lineCap = 'round';
+    for (let k = 0; k < 3; k++) for (const sd of [-1, 1]) {
+      const bx = (k - 1) * r * 0.8, sw = Math.sin(step + k * 2 + (sd > 0 ? Math.PI : 0)) * r * 0.3;
+      c.beginPath(); c.moveTo(bx, sd * r * 0.5);
+      c.lineTo(bx + sw * 0.5, sd * r * 1.25); c.lineTo(bx + sw + r * 0.15, sd * r * 1.6); c.stroke();
     }
+    // fleshy body
     const g = c.createRadialGradient(-r * 0.4, -r * 0.3, 4, 0, 0, r * 1.6);
-    g.addColorStop(0, '#9b4fbf'); g.addColorStop(0.6, t.color); g.addColorStop(1, '#1a0522');
+    g.addColorStop(0, '#c26a8a'); g.addColorStop(0.6, '#8a3a5c'); g.addColorStop(1, '#2a0c22');
     c.fillStyle = g;
     c.beginPath(); c.ellipse(0, 0, r * 1.5, r * 0.85, 0, 0, Math.PI * 2); c.fill();
-    c.strokeStyle = '#b48a3a'; c.lineWidth = 3;
-    c.beginPath(); c.ellipse(0, 0, r * 1.5, r * 0.85, 0, 0, Math.PI * 2); c.stroke();
-    c.lineWidth = 2;
-    for (const k of [-0.5, 0, 0.5]) { c.beginPath(); c.moveTo(k * r * 1.5, -r * 0.8); c.lineTo(k * r * 1.5, r * 0.8); c.stroke(); }
-    // eye
+    // bone carapace plates down the spine
+    for (let k = -2; k <= 1; k++) {
+      c.fillStyle = '#d9cfb4';
+      c.beginPath(); c.ellipse(k * r * 0.55, 0, r * 0.36, r * 0.62, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#4b1460';
+      c.beginPath(); c.ellipse(k * r * 0.55, 0, r * 0.24, r * 0.48, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#d9cfb4';
+      c.beginPath(); c.moveTo(k * r * 0.55 - 3, -r * 0.1); c.lineTo(k * r * 0.55 - r * 0.25, -r * 0.05); c.lineTo(k * r * 0.55 - 3, r * 0.1); c.fill();
+    }
+    // head with scything talons
+    c.fillStyle = '#d9cfb4';
+    c.beginPath(); c.ellipse(r * 1.35, 0, r * 0.45, r * 0.4, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = '#4b1460';
+    c.beginPath(); c.ellipse(r * 1.3, 0, r * 0.3, r * 0.26, 0, 0, Math.PI * 2); c.fill();
     c.fillStyle = '#ffe36b';
-    c.beginPath(); c.ellipse(r * 0.75, 0, r * 0.4, r * 0.25, 0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = '#200';
-    c.beginPath(); c.ellipse(r * 0.8, 0, r * 0.08, r * 0.22, 0, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(r * 1.5, -r * 0.14, 2.6, 0, Math.PI * 2); c.arc(r * 1.5, r * 0.14, 2.6, 0, Math.PI * 2); c.fill();
+    c.strokeStyle = '#efe6cf'; c.lineWidth = 3;
+    for (const sd of [-1, 1]) {
+      c.beginPath(); c.moveTo(r * 1.2, sd * r * 0.35);
+      c.quadraticCurveTo(r * 1.9, sd * r * 0.9, r * 2.1, sd * r * 0.3); c.stroke();
+    }
     c.restore();
     // hp bar
     const bw = 70, k = e.hp / e.maxHp;
@@ -997,15 +1055,28 @@
   }
 
   function drawRift(c) {
-    const x = 6, y = 90, t = state.time * 0.04;
+    // Tyranid spawning pool: a pulsing pit of biomass that disgorges spores.
+    const x = 8, y = 90, t = state.time * 0.04;
     c.save();
-    for (let i = 4; i >= 0; i--) {
-      c.fillStyle = `rgba(${120 + i * 20},${30 + i * 10},${160 + i * 15},${0.12 + 0.05 * (4 - i)})`;
-      c.beginPath(); c.ellipse(x, y, 22 + i * 7 + Math.sin(t + i) * 3, 36 + i * 6, 0, 0, Math.PI * 2); c.fill();
+    const pulse = 1 + Math.sin(t * 2) * 0.04;
+    const g = c.createRadialGradient(x, y, 4, x, y, 62 * pulse);
+    g.addColorStop(0, '#f0a0c0'); g.addColorStop(0.35, '#a03a6a'); g.addColorStop(0.75, '#4b1460'); g.addColorStop(1, 'rgba(40,10,40,0)');
+    c.fillStyle = g;
+    c.beginPath(); c.ellipse(x, y, 52 * pulse, 60 * pulse, 0, 0, Math.PI * 2); c.fill();
+    // waving tendrils
+    c.strokeStyle = '#3b1f4a'; c.lineCap = 'round';
+    for (let k = 0; k < 7; k++) {
+      const a = -1.3 + k * 0.43, sw = Math.sin(t * 3 + k) * 0.25;
+      c.lineWidth = 4 - k % 3;
+      c.beginPath(); c.moveTo(x + Math.cos(a) * 30, y + Math.sin(a) * 34);
+      c.quadraticCurveTo(x + Math.cos(a + sw) * 52, y + Math.sin(a + sw) * 58, x + Math.cos(a - sw) * 66, y + Math.sin(a - sw) * 70);
+      c.stroke();
     }
-    c.strokeStyle = 'rgba(220,160,255,0.5)'; c.lineWidth = 1.5;
-    for (let k = 0; k < 3; k++) {
-      c.beginPath(); c.ellipse(x, y, 18, 30, t * (k + 1) * 0.5, 0, Math.PI * 1.2); c.stroke();
+    // bubbling spore sacs
+    c.fillStyle = 'rgba(255,200,220,0.5)';
+    for (let k = 0; k < 5; k++) {
+      const ph = (t * 0.8 + k * 0.21) % 1;
+      c.beginPath(); c.arc(x + 4 + Math.sin(k * 7) * 16, y + Math.cos(k * 5) * 22, 2 + ph * 4, 0, Math.PI * 2); c.fill();
     }
     c.restore();
   }
@@ -1045,13 +1116,13 @@
       c.restore();
     }
 
-    // shadows beneath blooms
+    // shadows beneath spores
     c.fillStyle = 'rgba(0,0,0,0.25)';
     for (const e of state.enemies) {
       if (TIERS[e.tier].boss) continue;
       c.beginPath(); c.ellipse(e.x + 5, e.y + 14, TIERS[e.tier].r * 0.7, 3.5, 0, 0, Math.PI * 2); c.fill();
     }
-    // blooms, nearest to the gate drawn last
+    // spores, nearest to the gate drawn last
     const order = state.enemies.slice().sort((a, b) => a.d - b.d);
     for (const e of order) drawBloom(c, e);
 
@@ -1260,8 +1331,8 @@
         rows.push(['Pops', `<span id="pTop">${t.pops}</span>`]);
       }
       const tags = s.kind === 'aura'
-        ? [['Grants veil-sight', s.buffCamo]]
-        : [['Sees veiled', ef.camo], ['Pierces armour', s.ap]];
+        ? [['Grants auspex sight', s.buffCamo]]
+        : [['Sees camouflaged', ef.camo], ['Pierces armour', s.ap]];
       p.innerHTML = `
         <h2>${esc(def.name)}</h2>
         <p class="sub">${esc(def.blurb)}</p>
@@ -1301,9 +1372,9 @@
       .map(([k, c]) => { const [tier, v] = k.split(':').map(Number); return { tier, v, c }; })
       .sort((a, b) => b.tier - a.tier);
     p.innerHTML = `<h2>Augury</h2>
-      <p class="sub">${state.waveActive ? `Wave ${n} in progress.` : `The astropaths foresee wave ${n}:`}</p>
+      <p class="sub">${state.waveActive ? `Wave ${n} in progress.` : `The auspex detects wave ${n}:`}</p>
       <ul class="augury">${items.map(({ tier, v, c }) => `<li><span class="dot" style="background:${TIERS[tier].color}"></span>
-        <span>${esc(TIERS[tier].name)} ${v ? '<span class="veil">veiled</span>' : ''}${TIERS[tier].note ? `<br><span class="muted" style="font-size:.75rem">${esc(TIERS[tier].note)}</span>` : ''}</span>
+        <span>${esc(TIERS[tier].name)} ${v ? '<span class="veil">camouflaged</span>' : ''}${TIERS[tier].note ? `<br><span class="muted" style="font-size:.75rem">${esc(TIERS[tier].note)}</span>` : ''}</span>
         <span class="cnt">×${c}</span></li>`).join('')}</ul>`;
   }
 

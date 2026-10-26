@@ -1,6 +1,6 @@
 # Bloomfall: Siege of Hive Tertius
 
-A grimdark, Warhammer 40k–inspired balloon tower defense. Warp-tainted "blooms" pour out of a rift and you deploy Imperial defenders to stop them reaching the hive gate. Pop a bloom and the weaker one inside comes out.
+A grimdark, Warhammer 40k–inspired balloon tower defense. A Tyranid hive fleet is seeding the world with floating spores that pour out of a spawning pool, and you deploy Imperial defenders to stop them reaching the hive gate. Pop a spore and the weaker one inside comes out.
 
 ## Play
 
@@ -24,21 +24,21 @@ Open `index.html` in a browser. There's no build step or install; it's plain HTM
 | Flamer Sentinel | Short-range cone that hits crowds |
 | Mortar Battery | Long-range splash, cracks armour |
 | Lascannon Nest | Slow, heavy beam, cracks armour |
-| Sanctioned Psyker | Chain lightning, sees veiled blooms |
+| Sanctioned Psyker | Chain lightning, sees camouflaged spores |
 | Commissar | Doesn't shoot; buffs nearby defenders |
 
 Each defender has four upgrades bought in order.
 
-## Blooms
+## Spores
 
-Cultist → Heretek → Plague → Warpfire → Excess, then the special ones:
+Spore Mine → Termagant → Hormagaunt → Gargoyle → Genestealer, then the special ones:
 
-- **Void**: immune to explosions
-- **Changeling**: immune to fire
-- **Ork Iron**: armoured; needs armour-piercing weapons
-- **Daemon Engine**: takes 10 hits
-- **Warp Titan**: boss on waves 25, 30, 35 and 40
-- **Veiled** blooms of any type can only be targeted by Psykers or defenders with an auspex upgrade.
+- **Zoanthrope**: warp field makes it immune to explosions
+- **Pyrovore**: immune to fire
+- **Carnifex**: bone armour; needs armour-piercing weapons
+- **Tervigon Brood-Sac**: takes 10 hits
+- **Hierophant Bio-Titan**: boss on waves 25, 30, 35 and 40
+- **Camouflaged** spores of any type can only be targeted by Psykers or defenders with an auspex upgrade.
 
 Survive 40 waves to win, then keep going in freeplay.
 
@@ -46,6 +46,6 @@ Survive 40 waves to win, then keep going in freeplay.
 
 - `index.html`: page structure
 - `style.css`: styling
-- `game.js`: everything else. Tune the game through the `TIERS` (blooms), `TOWERS` (defenders and upgrades) and `EARLY_WAVES` / `waveGroups` (wave composition) tables near the top.
+- `game.js`: everything else. Tune the game through the `TIERS` (spores), `TOWERS` (defenders and upgrades) and `EARLY_WAVES` / `waveGroups` (wave composition) tables near the top.
 
 In the browser console, `window.bloomfall` exposes the game state for debugging.
