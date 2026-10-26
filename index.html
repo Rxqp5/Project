@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bloomfall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+Sans:wght@400;700&family=Pirata+One&family=Share+Tech+Mono&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- BODY:START -->
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Bloomfall</h1>
+      <p>Siege of Hive Tertius</p>
+    </div>
+    <div class="stats">
+      <div class="stat faith" id="faithBox"><span>Faith</span><b id="faith">150</b></div>
+      <div class="stat"><span>Requisition</span><b id="money">700</b></div>
+      <div class="stat"><span>Wave</span><b id="wave">0 / 40</b></div>
+    </div>
+  </header>
+
+  <div class="main">
+    <div>
+      <div class="board-wrap">
+        <canvas id="board" width="960" height="600" aria-label="Battlefield"></canvas>
+        <div class="toast" id="toast" hidden></div>
+        <div class="overlay" id="overlay" hidden>
+          <div class="box">
+            <h2 id="ovTitle">The Hive Falls</h2>
+            <p id="ovText"></p>
+            <div class="row" id="ovButtons"></div>
+          </div>
+        </div>
+      </div>
+      <div class="controls">
+        <button class="primary" id="startBtn">Send the Blooms<kbd>Space</kbd></button>
+        <button id="speedBtn">Speed 1×<kbd>F</kbd></button>
+        <button id="autoBtn">Auto-wave: off</button>
+        <button id="pauseBtn">Pause<kbd>P</kbd></button>
+        <button id="muteBtn">Sound: on</button>
+      </div>
+    </div>
+
+    <aside class="side">
+      <section class="card">
+        <h2>Requisition</h2>
+        <div class="shop-grid" id="shop"></div>
+      </section>
+      <section class="card panel" id="panel"></section>
+      <section class="card help">
+        <h2>Orders</h2>
+        <p>Pick a defender, then click open ground to deploy it. Click a deployed defender to upgrade, change its targeting, or sell it.</p>
+        <p>Each bloom you pop reveals the weaker bloom inside. Any that reach the gate drain your Faith.</p>
+        <p><b>Watch for:</b> warp-veiled blooms (need Psykers or an auspex), Ork Iron blooms (need armour-piercing weapons), Void blooms (shrug off explosions), Changeling blooms (shrug off fire).</p>
+      </section>
+    </aside>
+  </div>
+</div>
+<!-- BODY:END -->
+<script src="game.js"></script>
+</body>
+</html>
