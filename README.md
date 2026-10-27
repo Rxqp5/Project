@@ -8,6 +8,7 @@ Open `index.html` in a browser. There's no build step or install; it's plain HTM
 
 | Key | Action |
 | --- | --- |
+| Drag a unit card | Drop it on open ground to deploy (or click the card, then click the ground) |
 | `1`–`9` | Pick a unit to deploy (hold Shift to deploy several) |
 | `Space` | Send the next wave |
 | `U` | Buy the selected unit's shared upgrade |

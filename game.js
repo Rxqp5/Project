@@ -2674,10 +2674,78 @@
       const cost = document.createElement('span'); cost.className = 'cost'; cost.textContent = `⚙ ${def.cost}`;
       const hk = document.createElement('span'); hk.className = 'hk'; hk.textContent = def.key;
       b.append(towerIcon(key, 44), nm, cost, hk);
-      b.addEventListener('click', () => beginPlace(key));
+      b.addEventListener('click', () => { if (suppressClick) return; beginPlace(key); });
+      b.addEventListener('pointerdown', (ev) => startDrag(ev, key, b));
+      b.addEventListener('pointermove', moveDrag);
+      b.addEventListener('pointerup', endDrag);
+      b.addEventListener('pointercancel', cancelDrag);
       shop.appendChild(b);
     }
     updateHud(true);
+  }
+
+  // Drag and drop deployment: press a unit card, drag it onto the battlefield, release to deploy.
+  // A press that never moves falls through to the click handler (pick, then click the ground).
+  let drag = null;
+  let suppressClick = false; // swallows the click the browser fires at the end of a drag
+  const dragGhost = document.createElement('div');
+  dragGhost.className = 'drag-ghost';
+  dragGhost.hidden = true;
+  document.body.appendChild(dragGhost);
+
+  function startDrag(ev, key, b) {
+    if (ev.button !== 0 || state.over) return;
+    drag = { key, id: ev.pointerId, x0: ev.clientX, y0: ev.clientY, active: false };
+    try { b.setPointerCapture(ev.pointerId); } catch (e) { /* capture is optional */ }
+  }
+  function moveDrag(ev) {
+    if (!drag || ev.pointerId !== drag.id) return;
+    if (!drag.active) {
+      if (Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) < 6) return;
+      ensureAudio();
+      if (state.money < TOWERS[drag.key].cost) { toast('Not enough requisition.'); drag = null; return; }
+      drag.active = true;
+      placing = drag.key;
+      selected = null;
+      dragGhost.replaceChildren(towerIcon(drag.key, 44));
+      renderPanel();
+      updateHud();
+    }
+    ev.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const inside = ev.clientX >= rect.left && ev.clientX <= rect.right && ev.clientY >= rect.top && ev.clientY <= rect.bottom;
+    const p = toBoard(ev);
+    hover = { x: p.x, y: p.y, inside };
+    // over the board the in-world preview takes over from the floating card
+    dragGhost.hidden = inside;
+    dragGhost.style.transform = `translate(${ev.clientX - 26}px, ${ev.clientY - 26}px)`;
+  }
+  function endDrag(ev) {
+    if (!drag || ev.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    dragGhost.hidden = true;
+    if (!d.active) return;
+    suppressClick = true;
+    setTimeout(() => { suppressClick = false; }, 0);
+    const def = TOWERS[d.key];
+    if (hover.inside) {
+      if (state.money < def.cost) toast('Not enough requisition.');
+      else if (!canPlace(d.key, hover.x, hover.y)) toast('Cannot deploy there.');
+      else selected = placeTower(d.key, hover.x, hover.y);
+    }
+    placing = null;
+    hover.inside = false;
+    renderPanel();
+    updateHud();
+  }
+  function cancelDrag() {
+    if (!drag) return;
+    drag = null;
+    dragGhost.hidden = true;
+    placing = null;
+    renderPanel();
+    updateHud();
   }
 
   function beginPlace(key) {
@@ -2757,7 +2825,7 @@
     if (placing) {
       const def = TOWERS[placing];
       p.innerHTML = `<h2>${esc(def.name)}</h2><p class="sub">${esc(def.blurb)}</p>
-        <p>Click open ground to deploy for <b>⚙ ${def.cost}</b>. Hold Shift to deploy several. Esc cancels.</p>
+        <p>Drop it on open ground to deploy for <b>⚙ ${def.cost}</b>. Green means the ground is clear, red means blocked. You can also click the ground; hold Shift to deploy several. Esc cancels.</p>
         <p class="muted">Doctrines: ${def.paths.map((x) => esc(x.name)).join(' or ')}.</p>`;
       return;
     }
