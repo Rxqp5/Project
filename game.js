@@ -464,6 +464,8 @@
     smash() { if (throttle('smash', 60)) noise(0.2, 0.2, 200); },
     flame() { if (throttle('flame', 90)) noise(0.15, 0.04, 900); },
     leak() { tone(120, 0.45, 'sawtooth', 0.06, 0.5); },
+    incoming() { tone(1400, 0.7, 'sawtooth', 0.02, 0.15); noise(0.7, 0.05, 1600); },
+    hiss() { noise(0.45, 0.07, 5000); },
     place() { tone(260, 0.12, 'square', 0.04, 1.6); },
     horn() { tone(98, 0.6, 'sawtooth', 0.05, 1.02); tone(147, 0.6, 'sawtooth', 0.03, 1.02); },
   };
@@ -576,13 +578,38 @@
   }
   function placeTower(type, x, y) {
     const def = TOWERS[type];
-    const t = { id: nextId++, type, x, y, trunk: 0, path: -1, lv: 0, spent: def.cost, angle: -Math.PI / 2, kills: 0, mode: 'first', buff: null, flash: 0, punch: 0, leap: null, shot: 0 };
+    const t = { id: nextId++, type, x, y, trunk: 0, path: -1, lv: 0, spent: def.cost, angle: -Math.PI / 2, kills: 0, mode: 'first', buff: null, flash: 0, punch: 0, leap: null, shot: 0, drop: { t: 0 } };
     buildStats(t);
     state.towers.push(t);
     state.money -= def.cost;
     sfx.place();
-    burst(x, y, '#c9a24a', 10, 2);
+    sfx.incoming();
     return t;
+  }
+
+  // Drop pod timeline, in ticks: falls until LAND, doors blow at OPEN, the squad steps out
+  // and can fight from READY, and the empty pod has faded by DONE.
+  const POD = { LAND: 42, OPEN: 46, OUT: 56, READY: 80, FADE: 105, DONE: 140 };
+  function podRadius(t) { return TOWERS[t.type].r * MODEL_SCALE * 0.95; }
+  function updateDrop(t) {
+    const d = t.drop;
+    d.t++;
+    if (d.t === POD.LAND) {
+      const R = podRadius(t);
+      state.fx.push({ type: 'ring', x: t.x, y: t.y, r: R * 2.6, life: 22, max: 22 });
+      state.fx.push({ type: 'boom', x: t.x, y: t.y, r: R * 1.4, life: 14, max: 14 });
+      smoke(t.x, t.y, 10, 8);
+      sparks(t.x, t.y, 16, 5);
+      burst(t.x, t.y, '#6a5a48', 18, 4);
+      if (state.decals.length > 140) state.decals.shift();
+      state.decals.push({ x: t.x, y: t.y, r: R * 1.8, scorch: true, life: 900 });
+      shake(5);
+      sfx.boom(); sfx.clang();
+      // the impact rattles nearby ground creatures
+      areaHit(t.x, t.y, R + 22, 12, 6, 1, t, { stun: 25 }, 'ground');
+    }
+    if (d.t === POD.OPEN) { sfx.hiss(); for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + ((i + 0.5) / 5) * TAU; smoke(t.x + Math.cos(a) * podRadius(t), t.y + Math.sin(a) * podRadius(t), 1, 5); } }
+    if (d.t >= POD.DONE) t.drop = null;
   }
   function canPlace(type, x, y) {
     const r = TOWERS[type].r;
@@ -921,6 +948,7 @@
       if (t.flash > 0) t.flash--;
       if (t.punch > 0) t.punch--;
       if (t.leap) updateLeap(t);
+      if (t.drop) { updateDrop(t); if (t.drop && t.drop.t < POD.READY) continue; }
       t.stats.w.forEach((w, i) => {
         if (t.cds[i] > 0) { t.cds[i]--; return; }
         if (w.kind === 'leap' && t.leap) return;
@@ -2183,7 +2211,8 @@
 
   const flashes = []; // muzzle flashes found while drawing towers, lit in the glow pass
 
-  function drawTower(c, t, x, y, scale) {
+  function drawTower(c, t, x, y, scale, spread) {
+    if (spread === undefined) spread = 1;
     const s = (scale || 1) * MODEL_SCALE;
     if (t.type === 'dreadnought') {
       const p = (t.punch || 0) * 0.35;
@@ -2203,7 +2232,7 @@
     const ca = Math.cos(t.angle), sa = Math.sin(t.angle);
     models.forEach((m, i) => {
       const [fx, fy] = def.formation[i] || [0, 0];
-      const mx = x + fx * s, my = y + fy * s;
+      const mx = x + fx * s * spread, my = y + fy * s * spread;
       const ms = (m.scale || 1) * s;
       if (off) {
         const spr = marineSprite(Object.assign({}, m, { airborne: true }));
@@ -2222,6 +2251,122 @@
       const mz = MUZZLE[m.weapon];
       if (fired && t.flash > 3 && mz) flashes.push({ x: mx + (mz[0] * ca - mz[1] * sa) * ms, y: my + (mz[0] * sa + mz[1] * ca) * ms, weapon: m.weapon });
     });
+  }
+
+  const easeOut = (k) => 1 - Math.pow(1 - clamp(k, 0, 1), 3);
+
+  // A five-door Space Marine drop pod seen from above. open: 0 sealed, 1 doors flat on the ground.
+  function drawPod(c, x, y, R, open) {
+    const ch = CHAPTERS[chapter], A = ch.armour, T = ch.trim;
+    const N = 5, a0 = -Math.PI / 2, ap = R * Math.cos(Math.PI / N);
+    const corner = (i) => [x + Math.cos(a0 + (i / N) * TAU) * R, y + Math.sin(a0 + (i / N) * TAU) * R];
+    c.fillStyle = '#16140f';
+    c.beginPath(); for (let i = 0; i < N; i++) { const [px, py] = corner(i); i ? c.lineTo(px, py) : c.moveTo(px, py); } c.closePath(); c.fill();
+    if (open > 0) {
+      // deck: harness seats around a central column
+      dot(c, x, y, R * 0.62, '#2c2924');
+      for (let i = 0; i < N; i++) {
+        const a = a0 + ((i + 0.5) / N) * TAU;
+        c.fillStyle = '#3e3a33';
+        c.save(); c.translate(x + Math.cos(a) * R * 0.45, y + Math.sin(a) * R * 0.45); c.rotate(a);
+        c.fillRect(-2, -3, 4, 6); c.fillStyle = '#9c1c1c'; c.fillRect(-2, -0.6, 4, 1.2);
+        c.restore();
+      }
+      c.fillStyle = domeFill(c, x, y, R * 0.22, '#4a4640'); c.beginPath(); c.arc(x, y, R * 0.22, 0, TAU); c.fill();
+    }
+    const k = easeOut(open);
+    for (let i = 0; i < N; i++) {
+      const [x1, y1] = corner(i), [x2, y2] = corner(i + 1);
+      const mid = a0 + ((i + 0.5) / N) * TAU;
+      const r = 2 * ap * k; // the door's tip swings from the centre out past the hull
+      const tx = x + Math.cos(mid) * r, ty = y + Math.sin(mid) * r;
+      const lit = 0.5 + 0.5 * Math.cos(mid + Math.PI * 0.75); // light from the top left
+      const inner = r > ap;
+      c.fillStyle = inner ? shade('#3a3630', Math.round(lit * 30 - 10)) : shade(A, Math.round(lit * 80 - 45));
+      c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineTo(tx, ty); c.closePath(); c.fill();
+      c.strokeStyle = 'rgba(0,0,0,0.6)'; c.lineWidth = 0.8; c.stroke();
+      if (inner) {
+        c.strokeStyle = 'rgba(200,170,90,0.45)'; c.lineWidth = 0.7;
+        for (const f of [0.35, 0.6]) {
+          c.beginPath(); c.moveTo(x1 + (tx - x1) * f, y1 + (ty - y1) * f); c.lineTo(x2 + (tx - x2) * f, y2 + (ty - y2) * f); c.stroke();
+        }
+      } else {
+        c.strokeStyle = 'rgba(255,255,255,0.18)'; c.lineWidth = 0.8;
+        c.beginPath(); c.moveTo((x1 + x2) / 2, (y1 + y2) / 2); c.lineTo(tx, ty); c.stroke();
+      }
+      c.strokeStyle = trimFill(c, T, x1, y1, x2, y2); c.lineWidth = 1.4;
+      c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke();
+    }
+    // stabiliser vanes at each corner
+    for (let i = 0; i < N; i++) {
+      const a = a0 + (i / N) * TAU;
+      const [px, py] = corner(i);
+      c.save(); c.translate(px, py); c.rotate(a);
+      c.fillStyle = linFill(c, 0, -1.5, 0, 1.5, '#2e2e32', 40, -30); c.fillRect(-1, -1.4, R * 0.42, 2.8);
+      c.fillStyle = trimFill(c, T, 0, 0, R * 0.4, 0); c.fillRect(R * 0.32, -1.4, R * 0.1, 2.8);
+      c.restore();
+    }
+    if (open < 0.05) {
+      c.fillStyle = goldFill(c, x - R * 0.2, y - R * 0.2, x + R * 0.2, y + R * 0.2);
+      c.beginPath(); c.arc(x, y, R * 0.18, 0, TAU); c.fill();
+    }
+  }
+
+  // Ground layer: the targeting reticle and the pod's shadow while it falls.
+  function drawDropMarker(c, t) {
+    const d = t.drop, R = podRadius(t);
+    if (d.t >= POD.LAND) return;
+    const k = d.t / POD.LAND;
+    c.save();
+    c.translate(t.x, t.y);
+    c.globalAlpha = 0.25 + 0.55 * k;
+    blob(c, 0, 0, R * (0.4 + 0.8 * k), R * (0.3 + 0.6 * k), 'rgba(0,0,0,0.7)');
+    c.globalAlpha = 0.6 + 0.4 * Math.sin(d.t * 0.5);
+    c.rotate(d.t * 0.06);
+    c.strokeStyle = '#ff4a2a'; c.lineWidth = 1.6; c.setLineDash([R * 0.5, R * 0.3]);
+    c.beginPath(); c.arc(0, 0, R * 1.5 - k * R * 0.4, 0, TAU); c.stroke();
+    c.setLineDash([]);
+    for (let i = 0; i < 4; i++) {
+      c.rotate(Math.PI / 2);
+      c.beginPath(); c.moveTo(R * 0.6, 0); c.lineTo(R * 1.1, 0); c.stroke();
+    }
+    c.restore();
+    light(t.x, t.y, R * 3, '255,80,40', 0.35 * k);
+  }
+
+  // Sky layer: the pod screaming in from orbit.
+  function drawFallingPod(c, t, glowPass) {
+    const d = t.drop, R = podRadius(t);
+    if (d.t >= POD.LAND) return;
+    const k = Math.pow(d.t / POD.LAND, 2);
+    const ox = -220 * (1 - k), oy = -380 * (1 - k), sc = 1 + 1.3 * (1 - k);
+    const px = t.x + ox, py = t.y + oy;
+    if (glowPass) {
+      // re-entry trail back along the flight path, plus retro-burn just before touchdown
+      for (let i = 2; i <= 8; i++) glow(c, px - i * 5, py - i * 8.7, R * sc * (1.1 - i * 0.09), i < 4 ? '255,190,110' : '255,100,40', 0.5 - i * 0.05);
+      glow(c, px - 4, py - 7, R * sc * 1.1, '255,140,60', 0.25);
+      if (k > 0.75) glow(c, t.x, t.y, R * 2.4, '255,180,90', (k - 0.75) * 3);
+      return;
+    }
+    drawPod(c, px, py, R * sc, 0);
+    light(px, py, R * 6, '255,140,60', 0.8);
+  }
+  function drawPodStage(c, t) {
+    const d = t.drop, R = podRadius(t);
+    if (d.t < POD.LAND) return;
+    const fade = d.t < POD.FADE ? 1 : 1 - (d.t - POD.FADE) / (POD.DONE - POD.FADE);
+    c.globalAlpha = fade;
+    drawPod(c, t.x, t.y, R, clamp((d.t - POD.OPEN) / 14, 0, 1));
+    c.globalAlpha = 1;
+    if (d.t < POD.OUT) return;
+    const k = easeOut((d.t - POD.OUT) / (POD.READY - POD.OUT));
+    if (t.type === 'dreadnought' || t.type === 'whirlwind') {
+      c.globalAlpha = k;
+      drawTower(c, t, t.x, t.y, 0.75 + 0.25 * k);
+      c.globalAlpha = 1;
+    } else {
+      drawTower(c, t, t.x, t.y, 1, k);
+    }
   }
 
   function drawPool(c) {
@@ -2314,6 +2459,7 @@
       if (Math.random() < 0.4) state.particles.push({ x: z.x + rand(-z.r, z.r) * 0.6, y: z.y + rand(-z.r, z.r) * 0.6, vx: 0, vy: -0.6, life: 18, max: 18, color: '#ff8a2a', size: 4, flame: true });
     }
     drawPool(c);
+    for (const t of state.towers) if (t.drop) drawDropMarker(c, t);
 
     // the swarm on the ground: all shadows first, then bodies from back to front
     const ground = state.enemies.filter((e) => !e.u.fly).sort((a, b) => a.y - b.y);
@@ -2332,7 +2478,10 @@
     }
     c.globalAlpha = 1;
 
-    for (const t of state.towers.slice().sort((a, b) => a.y - b.y)) if (!t.leap) drawTower(c, t, t.x, t.y);
+    for (const t of state.towers.slice().sort((a, b) => a.y - b.y)) {
+      if (t.drop) drawPodStage(c, t);
+      else if (!t.leap) drawTower(c, t, t.x, t.y);
+    }
 
     for (const f of TERRAIN.fires) drawFire(c, f, false);
 
@@ -2347,6 +2496,7 @@
     c.globalAlpha = 1;
     for (const e of air) stamp(c, unitFrame(e), e.x, e.y, e.facing, 1, 0);
     for (const t of state.towers) if (t.leap) drawTower(c, t, t.x, t.y);
+    for (const t of state.towers) if (t.drop) drawFallingPod(c, t, false);
 
     // projectile bodies
     for (const p of state.projectiles) {
@@ -2415,6 +2565,7 @@
     // additive glow pass
     c.globalCompositeOperation = 'lighter';
     for (const f of TERRAIN.fires) drawFire(c, f, true);
+    for (const t of state.towers) if (t.drop) drawFallingPod(c, t, true);
     glow(c, 10, 90, 70 + Math.sin(state.time * 0.08) * 6, '255,80,170', 0.35);
     // synapse threads
     c.strokeStyle = 'rgba(200,120,255,0.35)'; c.lineWidth = 1; c.globalAlpha = 1;

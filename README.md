@@ -59,6 +59,7 @@ Everything is drawn procedurally on a canvas; there are no image files.
 - **Sprites:** each unit is baked once into a supersampled sprite with shading, metallic gradients, an outline and a soft silhouette shadow. Tyranids get 12-frame walk cycles.
 - **Lighting:** a half-resolution light map is multiplied over the scene each frame. Muzzle flashes, plasma, explosions, fires, the spawning pool and Zoanthropes all light their surroundings. Bright sources get an extra additive glow.
 - **Terrain:** the ground, the bio-creep and the road are generated from fractal noise. Ruins, tank traps, a burning Rhino wreck, capillary towers and the fortress wall block deployment.
+- **Drop pods:** every unit arrives by orbital drop pod. A targeting reticle appears, the pod streaks in, the impact stuns and slightly damages nearby ground Tyranids, then the doors blow open and the squad deploys. Units can fire about 1.3 seconds after you place them.
 - **Low-quality mode:** if the frame rate drops for a few seconds, the fog layer switches off automatically.
 
 ## Code layout
