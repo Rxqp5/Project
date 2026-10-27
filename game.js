@@ -1607,18 +1607,40 @@
   }
 
   // Atmosphere layers that drift over everything.
-  const fogCv = (() => {
-    const S = 192, cv = makeCanvas(S, S), g = cv.getContext('2d');
+  // Rolling mist: seamlessly tiling noise layers that drift past each other. It is drawn
+  // before the light map, so fires and muzzle flashes glow through it.
+  function makeFog(seed, S, period, lo, gain, rgb, oct) {
+    const cv = makeCanvas(S, S), g = cv.getContext('2d');
     const img = g.createImageData(S, S);
-    const n = makeNoise(303, 8);
+    const n = makeNoise(seed, period);
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
-      const f = fbm(n, (x / S) * 8, (y / S) * 8, 4);
+      const f = fbm(n, (x / S) * period, (y / S) * period, oct || 4);
       const i = (y * S + x) * 4;
-      img.data[i] = 170; img.data[i + 1] = 160; img.data[i + 2] = 185; img.data[i + 3] = clamp((f - 0.42) * 2.4, 0, 1) * 255;
+      img.data[i] = rgb[0]; img.data[i + 1] = rgb[1]; img.data[i + 2] = rgb[2];
+      img.data[i + 3] = clamp((f - lo) * gain, 0, 1) * 255;
     }
     g.putImageData(img, 0, 0);
     return cv;
-  })();
+  }
+  const MIST = [
+    { cv: makeFog(303, 192, 8, 0.47, 2.6, [198, 192, 210]), tile: 860, vx: 0.11, vy: 0.025, a: 0.42 }, // broad banks
+    { cv: makeFog(919, 192, 6, 0.52, 3.4, [214, 208, 224], 5), tile: 520, vx: -0.2, vy: 0.07, a: 0.3 }, // drifting wisps
+    { cv: makeFog(41, 128, 4, 0.4, 1.6, [176, 170, 190], 3), tile: 1500, vx: 0.05, vy: -0.035, a: 0.12 }, // slow haze
+  ];
+  let mistOn = true, mistClock = 0;
+  try { mistOn = localStorage.getItem('bloomfall-mist') !== 'off'; } catch (e) { /* storage unavailable */ }
+  function drawMist(c) {
+    if (!mistOn) return;
+    mistClock++;
+    MIST.forEach((L, i) => {
+      if (lowQuality && i > 0) return;
+      c.globalAlpha = L.a * (0.8 + 0.2 * Math.sin(mistClock * 0.004 + i * 2.1));
+      const sx = (((mistClock * L.vx) % L.tile) + L.tile) % L.tile - L.tile;
+      const sy = (((mistClock * L.vy) % L.tile) + L.tile) % L.tile - L.tile;
+      for (let x = sx; x < W; x += L.tile) for (let y = sy; y < H; y += L.tile) c.drawImage(L.cv, x, y, L.tile + 1, L.tile + 1);
+    });
+    c.globalAlpha = 1;
+  }
   const vignetteCv = (() => {
     const cv = makeCanvas(W, H), g = cv.getContext('2d');
     const v = g.createRadialGradient(W * 0.45, H * 0.45, 200, W / 2, H / 2, 640);
@@ -1648,8 +1670,12 @@
     g.addColorStop(0, 'rgba(8,6,5,0.85)'); g.addColorStop(0.6, 'rgba(20,14,10,0.5)'); g.addColorStop(1, 'rgba(20,14,10,0)');
     c.fillStyle = g; c.beginPath(); c.arc(0, 0, 24, 0, TAU); c.fill();
     const rng = mulberry32(5);
-    c.strokeStyle = 'rgba(10,8,6,0.6)'; c.lineWidth = 1.2;
-    for (let k = 0; k < 10; k++) { const a = rng() * TAU; c.beginPath(); c.moveTo(Math.cos(a) * 8, Math.sin(a) * 8); c.lineTo(Math.cos(a) * (16 + rng() * 8), Math.sin(a) * (16 + rng() * 8)); c.stroke(); }
+    for (let k = 0; k < 9; k++) {
+      const a = rng() * TAU, d = 9 + rng() * 9, r = 3 + rng() * 4;
+      const sg = c.createRadialGradient(Math.cos(a) * d, Math.sin(a) * d, 0, Math.cos(a) * d, Math.sin(a) * d, r);
+      sg.addColorStop(0, 'rgba(14,10,8,0.45)'); sg.addColorStop(1, 'rgba(14,10,8,0)');
+      c.fillStyle = sg; c.beginPath(); c.arc(Math.cos(a) * d, Math.sin(a) * d, r, 0, TAU); c.fill();
+    }
   }, { shade: false, outline: 0, shadow: false });
   const smokeSprite = () => cached('smoke', 16, (c) => {
     const rng = mulberry32(17);
@@ -2560,6 +2586,7 @@
     for (const f of flashes) light(f.x, f.y, f.big ? 70 : f.jet ? 40 : 50, f.weapon === 'plasma' ? '100,200,255' : '255,190,90', f.jet ? 0.5 : 0.9);
     for (const t of state.towers) if (t.type === 'librarian' && t.flash > 0) light(t.x, t.y, 70, '120,170,255', 0.8);
 
+    drawMist(c);
     applyLights(c);
 
     // additive glow pass
@@ -2661,13 +2688,6 @@
     c.globalAlpha = 1;
 
     // atmosphere
-    if (!lowQuality) {
-      const fx = (state.time * 0.12) % 960;
-      c.globalAlpha = 0.13;
-      c.drawImage(fogCv, -fx, -40, 960, 960);
-      c.drawImage(fogCv, 960 - fx, -40, 960, 960);
-      c.globalAlpha = 1;
-    }
     for (const a of ash) {
       a.x += a.v * 0.6; a.y += a.v * 0.35 + Math.sin(state.time * 0.02 + a.s) * 0.1;
       if (a.x > W + 5) a.x = -5; if (a.y > H + 5) a.y = -5;
@@ -3100,6 +3120,12 @@
     state.autoTimer = 60;
     $('autoBtn').textContent = `Auto-wave: ${state.auto ? 'on' : 'off'}`;
     $('autoBtn').classList.toggle('on', state.auto);
+  });
+  $('mistBtn').textContent = `Mist: ${mistOn ? 'on' : 'off'}`;
+  $('mistBtn').addEventListener('click', () => {
+    mistOn = !mistOn;
+    $('mistBtn').textContent = `Mist: ${mistOn ? 'on' : 'off'}`;
+    try { localStorage.setItem('bloomfall-mist', mistOn ? 'on' : 'off'); } catch (e) { /* storage unavailable */ }
   });
   $('muteBtn').addEventListener('click', () => {
     ensureAudio();
