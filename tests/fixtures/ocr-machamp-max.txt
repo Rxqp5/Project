@@ -1,0 +1,18 @@
+Machamp
+172/172 HP
+FIGHTING 202kg 2.0m
+123,456 87
+MAX MOVES
+Counter 12
+Dynamic Punch 70
+
+Machamp
+172/172 HP
+FIGHTING 202kg 2.0m
+123,456 87
+MAX MOVES
+Counter 12
+Dynamic Punch 70
+
+cr2968
+

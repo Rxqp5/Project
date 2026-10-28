@@ -1,6 +1,7 @@
 // "My Pokémon" page: the player's own Pokémon, entered by hand and saved on this device.
 
 import { AVERAGE_IVS, estimateLevel, validEntries } from './collection.js';
+import { readScreenshot, mergeScreens, readPokemon } from './scan.js';
 
 const megaForms = (data, key) => Object.values(data.pokemon).filter((p) => p.base === key && p.mega && p.released);
 
@@ -8,6 +9,11 @@ export function renderMine(app, ctx) {
   const { data, esc, sprite, typeBadges, moveBadge } = ctx;
   let editingId = null;
   let query = '';
+  // Pokémon read from screenshots, waiting to be checked and added. `prefill` is a draft loaded
+  // into the form for fixing.
+  let drafts = [];
+  let prefill = null;
+  let scanStatus = '';
 
   const species = Object.entries(data.pokemon)
     .filter(([, p]) => p.released && !p.mega && !p.gmax && p.fast.length && p.charged.length)
@@ -72,7 +78,7 @@ export function renderMine(app, ctx) {
       <li class="mine-card">
         <img src="${sprite(p.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
         <div class="mine-body">
-          <strong>${e.shadow ? 'Shadow ' : ''}${esc(p.name)}</strong> <span class="muted">CP ${e.cp} · Lv ${e.level}</span>
+          <strong><a href="#/pokemon/${e.key}">${e.shadow ? 'Shadow ' : ''}${esc(p.name)}</a></strong> <span class="muted">CP ${e.cp} · Lv ${e.level}</span>
           <div>${typeBadges(p.types)}</div>
           <div class="moves">${moveBadge(e.fast, p.eliteFast.includes(e.fast))}${e.charged.filter(Boolean).map((c) => moveBadge(c, p.eliteCharged.includes(c))).join('')}</div>
           ${tags.length ? `<div>${tags.map((t) => `<span class="status">${t}</span>`).join(' ')}</div>` : ''}
@@ -84,9 +90,59 @@ export function renderMine(app, ctx) {
       </li>`;
   }
 
+  const draftReady = (d) => d.key && d.cp && d.fast && d.charged.length;
+
+  function draftToEntry(d) {
+    return {
+      id: crypto.randomUUID(),
+      key: d.key, cp: d.cp, ivs: d.ivs,
+      level: d.level ?? estimateLevel(data, data.pokemon[d.key], d.cp, d.ivGuess || AVERAGE_IVS),
+      fast: d.fast, charged: d.charged,
+      shadow: Boolean(d.shadow), mega: false, dynamax: Boolean(d.dynamax || d.gmax), gmax: Boolean(d.gmax),
+    };
+  }
+
+  function draftCard(d, i) {
+    const p = d.key && data.pokemon[d.key];
+    return `
+      <li class="mine-card">
+        ${p ? `<img src="${sprite(p.dex)}" alt="" width="56" height="56" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">?</span>'}
+        <div class="mine-body">
+          <strong>${p ? `${d.shadow ? 'Shadow ' : ''}${esc(p.name)}` : 'Unknown Pokémon'}</strong>
+          <span class="muted">${d.cp ? `CP ${d.cp}` : 'CP ?'}${d.level ? ` · Lv ${d.level}` : ''}${d.ivs ? ` · IVs ${d.ivs.atk}/${d.ivs.def}/${d.ivs.sta}` : ''}</span>
+          ${p ? `<div class="moves">${d.fast ? moveBadge(d.fast) : ''}${d.charged.map((c) => moveBadge(c)).join('')}</div>` : ''}
+          ${d.dynamax || d.gmax ? `<div><span class="status">${d.gmax ? 'Gigantamax' : 'Dynamax'}</span></div>` : ''}
+          ${d.problems.length ? `<div class="error">${d.problems.map(esc).join(' ')}</div>` : ''}
+        </div>
+        <div class="mine-actions">
+          ${draftReady(d) ? `<button type="button" data-draft-add="${i}">Add</button>` : ''}
+          <button type="button" data-draft-fix="${i}">${draftReady(d) ? 'Edit' : 'Fix'}</button>
+          <button type="button" data-draft-skip="${i}" class="danger">Skip</button>
+        </div>
+      </li>`;
+  }
+
+  async function scan(files) {
+    const parsed = [];
+    for (let i = 0; i < files.length; i++) {
+      scanStatus = `Reading screenshot ${i + 1} of ${files.length}…${i === 0 ? ' (the first one takes a little longer)' : ''}`;
+      render();
+      try {
+        parsed.push(await readScreenshot(files[i]));
+      } catch (err) {
+        scanStatus = err.message || "Couldn't read that screenshot.";
+        return render();
+      }
+    }
+    const found = mergeScreens(parsed).map((s) => readPokemon(s, data));
+    drafts = [...drafts, ...found];
+    scanStatus = `Found ${found.filter((d) => d.key).length} Pokémon. Check them below, then add them.`;
+    render();
+  }
+
   function render() {
     const list = ctx.getCollection();
-    const editing = list.find((e) => e.id === editingId);
+    const editing = list.find((e) => e.id === editingId) || prefill;
     const q = query.trim().toLowerCase();
     const shown = list
       .filter((e) => !q || data.pokemon[e.key].name.toLowerCase().includes(q))
@@ -100,17 +156,30 @@ export function renderMine(app, ctx) {
       </section>
 
       <section class="panel">
-        <h2>${editing ? `Edit ${esc(data.pokemon[editing.key].name)}` : 'Add a Pokémon'}</h2>
+        <h2>Add from screenshots</h2>
+        <p class="hint">Take a screenshot of each Pokémon's page in Pokémon GO and pick them here, several at once if you like.
+        If its moves are further down, take a second screenshot of the moves straight after the first.
+        Screenshots are read on your phone and never uploaded.</p>
+        <div class="form-actions">
+          <label class="button primary">Choose screenshots<input type="file" id="scan" accept="image/*" multiple hidden></label>
+          ${drafts.some(draftReady) ? `<button type="button" id="add-all">Add all ready (${drafts.filter(draftReady).length})</button>` : ''}
+        </div>
+        <p class="hint" role="status">${esc(scanStatus)}</p>
+        ${drafts.length ? `<ul class="mine-list">${drafts.map(draftCard).join('')}</ul>` : ''}
+      </section>
+
+      <section class="panel">
+        <h2>${editingId ? `Edit ${esc(data.pokemon[editing.key].name)}` : prefill ? `Check ${esc(data.pokemon[prefill.key]?.name || 'this Pokémon')}` : 'Add a Pokémon by hand'}</h2>
         <form id="add" class="settings mine-form" autocomplete="off">
           <label>Pokémon
             <input name="species" list="species-list" placeholder="Start typing, e.g. Tyranitar" required
-              value="${editing ? esc(data.pokemon[editing.key].name) : ''}">
+              value="${editing?.key ? esc(data.pokemon[editing.key].name) : ''}">
             <datalist id="species-list">${species.map(([, p]) => `<option value="${esc(p.name)}">`).join('')}</datalist>
           </label>
-          <label>CP<input name="cp" type="number" min="10" max="9999" inputmode="numeric" required value="${editing ? editing.cp : ''}" placeholder="e.g. 3200"></label>
-          <div id="fields" class="settings">${editing ? formFields(editing.key, editing) : ''}</div>
+          <label>CP<input name="cp" type="number" min="10" max="9999" inputmode="numeric" required value="${editing?.cp || ''}" placeholder="e.g. 3200"></label>
+          <div id="fields" class="settings">${editing?.key ? formFields(editing.key, editing) : ''}</div>
           <div class="form-actions">
-            <button type="submit" class="primary">${editing ? 'Save changes' : 'Add Pokémon'}</button>
+            <button type="submit" class="primary">${editingId ? 'Save changes' : 'Add Pokémon'}</button>
             ${editing ? '<button type="button" id="cancel">Cancel</button>' : ''}
           </div>
           <p class="error" id="form-error" role="alert"></p>
@@ -138,7 +207,33 @@ export function renderMine(app, ctx) {
 
     const form = app.querySelector('#add');
     const f = form.elements;
-    if (editing) updatePreview(form);
+    if (editing?.key) updatePreview(form);
+
+    app.querySelector('#scan').addEventListener('change', (e) => {
+      const files = [...e.target.files];
+      if (files.length) scan(files);
+    });
+    app.querySelector('#add-all')?.addEventListener('click', () => {
+      const ready = drafts.filter(draftReady);
+      if (ctx.setCollection([...list, ...ready.map(draftToEntry)])) {
+        drafts = drafts.filter((d) => !draftReady(d));
+        scanStatus = `Added ${ready.length} Pokémon.`;
+        render();
+      }
+    });
+    app.querySelectorAll('[data-draft-add], [data-draft-fix], [data-draft-skip]').forEach((b) => b.addEventListener('click', () => {
+      const { draftAdd, draftFix, draftSkip } = b.dataset;
+      const i = Number(draftAdd ?? draftFix ?? draftSkip);
+      const d = drafts[i];
+      drafts = drafts.filter((_, j) => j !== i);
+      if (draftAdd !== undefined) ctx.setCollection([...list, draftToEntry(d)]);
+      if (draftFix !== undefined) {
+        prefill = { ...draftToEntry(d), key: d.key, cp: d.cp };
+        editingId = null;
+      }
+      render();
+      if (draftFix !== undefined) app.querySelector('#add').scrollIntoView({ behavior: 'smooth' });
+    }));
 
     f.species.addEventListener('input', () => {
       const key = byName.get(f.species.value.trim().toLowerCase());
@@ -174,10 +269,12 @@ export function renderMine(app, ctx) {
       const next = editingId ? list.map((x) => (x.id === editingId ? entry : x)) : [...list, entry];
       if (!ctx.setCollection(next)) return (error.textContent = "Couldn't save. Is private browsing on?");
       editingId = null;
+      prefill = null;
       render();
     });
     app.querySelector('#cancel')?.addEventListener('click', () => {
       editingId = null;
+      prefill = null;
       render();
     });
 

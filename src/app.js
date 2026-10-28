@@ -6,6 +6,8 @@ import {
 import { SCHEDULE_URLS, scheduleItems, lineupItems, rotationDays } from './schedule.js';
 import { rankOwned, rankOwnedMax, moveTips, loadCollection, saveCollection } from './collection.js';
 import { renderMine } from './mine.js';
+import { renderPowerUp, renderPokemon } from './pokemon-pages.js';
+import { typeRankings, maxTopAttackers } from './advice.js';
 
 const app = document.getElementById('app');
 const TIER_ORDER = ['1', '2', '3', '4', '5', 'elite', 'shadow_1', 'shadow_3', 'shadow_5',
@@ -521,8 +523,53 @@ function route({ keepScroll = false } = {}) {
         return saveCollection(safeStorage(), list);
       },
     });
-  } else renderRotation();
+  } else if (page === 'powerup') renderPowerUp(app, pageContext());
+  else if (page === 'pokemon') renderPokemon(app, pageContext(), tier);
+  else renderRotation();
   if (!keepScroll) window.scrollTo({ top: 0 });
+}
+
+function pageContext() {
+  return {
+    data, esc, sprite, typeBadge, typeBadges, moveBadge, bossName,
+    getCollection: () => collection,
+    setCollection: (list) => {
+      collection = list;
+      return saveCollection(safeStorage(), list);
+    },
+    adviceContext,
+    rerender: () => route({ keepScroll: true }),
+  };
+}
+
+// ---------- Advice ----------
+
+let rankingsCache;
+let bossesCache;
+
+// The raid bosses running now or in the next two weeks, with their counters, plus current Max
+// Battle bosses (3★ and up) with their best attackers. Used for power-up advice.
+function adviceContext() {
+  rankingsCache ||= typeRankings(data);
+  const cacheKey = `${schedule?.fetched}|${JSON.stringify(settings)}`;
+  if (bossesCache?.key !== cacheKey) {
+    const now = new Date();
+    const soon = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const dated = schedule ? scheduleItems(schedule.events, data).filter((i) => i.kind === 'boss' && i.key && i.end > now && i.start < soon) : [];
+    const undated = schedule ? lineupItems(schedule.lineup, data).filter((i) => ['3', '5', 'mega', 'shadow_3'].includes(i.tier)) : [];
+    const seen = new Set();
+    const bosses = [];
+    for (const { key, tier } of [...dated, ...undated]) {
+      if (!TIERS[tier] || TIERS[tier].max || seen.has(`${tier}:${key}`)) continue;
+      seen.add(`${tier}:${key}`);
+      bosses.push({ key, tier, counters: countersFor(key, tier) });
+    }
+    const maxBosses = data.raids
+      .filter((r) => r.status === 'current' && ['max_3', 'max_4', 'max_5', 'max_6'].includes(r.tier))
+      .map((r) => ({ key: r.key, tier: r.tier, top: maxTopAttackers(data, r.key, r.tier) }));
+    bossesCache = { key: cacheKey, bosses, maxBosses };
+  }
+  return { rankings: rankingsCache, bosses: bossesCache.bosses, maxBosses: bossesCache.maxBosses };
 }
 
 // ---------- Rotation ----------
@@ -593,7 +640,8 @@ async function loadSchedule() {
   } catch {
     // Offline or the feed is down: keep the copy saved when the data was built.
   }
-  if (!location.hash.split('/')[1]) route({ keepScroll: true });
+  const page = location.hash.split('/')[1];
+  if (!page || page === 'powerup' || page === 'pokemon') route({ keepScroll: true });
 }
 
 async function start() {
