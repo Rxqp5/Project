@@ -57,3 +57,17 @@ test('backups round-trip and bad entries are dropped', () => {
   const cleaned = validEntries(data, [...collection, { key: 'NOT_A_POKEMON' }, null, { ...collection[0], fast: 'NOPE' }]);
   assert.equal(cleaned.length, collection.length);
 });
+
+test('scan priorities list unchecked Pokémon by how many best teams they are in', async () => {
+  const { scanPriorities } = await import('../src/collection.js');
+  const list = [
+    { ...entry('s1', 'TYRANITAR', 3200, 'BITE_FAST', ['BRUTAL_SWING']), movesUnknown: true },
+    { ...entry('s2', 'FURRET', 1200, 'SUCKER_PUNCH_FAST', ['SWIFT']), movesUnknown: true },
+    entry('c1', 'GENGAR', 2500, 'LICK_FAST', ['SHADOW_BALL']),
+  ];
+  const priorities = scanPriorities(data, list, [{ key: 'MEWTWO', tier: '5' }, { key: 'GIRATINA_ORIGIN', tier: '5' }]);
+  assert.equal(priorities[0].entry.id, 's1');
+  assert.equal(priorities[0].bosses.length, 2);
+  assert.ok(priorities.every((p) => p.entry.movesUnknown));
+  assert.deepEqual(scanPriorities(data, [list[2]], [{ key: 'MEWTWO', tier: '5' }]), []);
+});

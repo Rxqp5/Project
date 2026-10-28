@@ -15,6 +15,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { toIcs, raidCalendarEvents } from '../src/calendar.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const cacheDir = `${root}.cache/`;
@@ -391,4 +392,6 @@ const output = {
   schedule: { fetched: new Date().toISOString(), events, lineup },
 };
 await writeFile(`${root}data/game.json`, JSON.stringify(output));
+// A calendar players can subscribe to: Raid Hours, Raid Days, Max Mondays and boss rotations.
+await writeFile(`${root}data/raid-calendar.ics`, toIcs(raidCalendarEvents(events), { name: 'Pokémon GO raids' }));
 console.log(`Wrote data/game.json: ${Object.keys(pokemon).length} Pokémon, ${Object.keys(moves).length} moves, ${raids.size} raid bosses.`);

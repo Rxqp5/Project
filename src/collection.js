@@ -8,7 +8,7 @@
 // `movesUnknown` marks a storage import, given its best moves until its own page is scanned.
 
 import {
-  SHADOW_ATK, SHADOW_DEF, bossStats, averageBossDps, movesetPerformance, rankMovesets, bestMaxMove,
+  SHADOW_ATK, SHADOW_DEF, bossStats, averageBossDps, movesetPerformance, rankMovesets, bestMaxMove, pickParty,
 } from './calc.js';
 
 // Used when the player doesn't know the IVs: a typical caught/raided Pokémon.
@@ -99,6 +99,24 @@ export function rankOwned(data, bossKey, tier, collection, { weather, bossMoves 
     }
   }
   return results.sort((a, b) => b.score - a.score);
+}
+
+// Which storage imports (moves not checked yet) are worth scanning first: the ones in the
+// player's best team for the most raids running now or coming up. `bosses` is [{ key, tier }].
+export function scanPriorities(data, collection, bosses) {
+  if (!collection.some((e) => e.movesUnknown)) return [];
+  const byEntry = new Map();
+  for (const b of bosses) {
+    const team = pickParty(rankOwned(data, b.key, b.tier, collection), undefined, { idOf: (c) => c.entryId });
+    for (const member of team) {
+      if (!member.movesUnknown) continue;
+      if (!byEntry.has(member.entryId)) byEntry.set(member.entryId, []);
+      byEntry.get(member.entryId).push(b);
+    }
+  }
+  return [...byEntry.entries()]
+    .map(([id, list]) => ({ entry: collection.find((e) => e.id === id), bosses: list }))
+    .sort((a, b) => b.bosses.length - a.bosses.length || b.entry.cp - a.entry.cp);
 }
 
 // "TM it to …" tips: team members whose moves fall well short of their best, and Pokémon left

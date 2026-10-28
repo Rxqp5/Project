@@ -431,3 +431,51 @@ button:disabled { opacity: 0.5; cursor: default; }
 .advice .hint { margin: 2px 0; }
 .status-skip { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
 .mine-body a { color: inherit; }
+
+/* ---------- Favourites & reminders ---------- */
+
+.fav-star { color: #f59e0b; }
+.fav-button {
+  display: inline-block;
+  margin: 2px 0 6px;
+  font: inherit;
+  font-size: 14px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid #f59e0b;
+  background: transparent;
+  color: #b45309;
+  cursor: pointer;
+}
+.fav-button[aria-pressed="true"] { background: #f59e0b; color: #fff; }
+.rot-fav { border-color: #f59e0b; box-shadow: 0 0 0 1px #f59e0b inset; }
+.rot-wrap { position: relative; }
+.rot-wrap .rot { padding-right: 52px; }
+.bell {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  font-size: 16px;
+  cursor: pointer;
+}
+.reminders summary { cursor: pointer; }
+.reminders p { margin: 10px 0; font-size: 14px; }
+a.button { display: inline-block; text-decoration: none; }
+
+/* ---------- Type chart ---------- */
+
+.type-chart { border-collapse: collapse; font-size: 12px; }
+.type-chart th, .type-chart td { border: 1px solid var(--border); text-align: center; padding: 0; width: 34px; height: 30px; }
+.type-chart th .type { margin: 0; padding: 1px 4px; font-size: 10px; }
+.type-chart th.corner { font-size: 9px; color: var(--muted); min-width: 60px; }
+.type-chart tbody th { position: sticky; left: 0; background: var(--surface); }
+.type-chart td.se { background: #bbf7d0; color: #166534; }
+.type-chart td.nve { background: #fecaca; color: #991b1b; }
+.type-chart td.imm { background: #f87171; color: #fff; }
+.type-pick { font-size: 14px; padding: 4px 12px; text-decoration: none; }
