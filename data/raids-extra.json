@@ -1,0 +1,4 @@
+{
+  "_help": "Add raid bosses here that are missing from the automatic list. 'key' is the Pokémon's id in data/game.json (e.g. MEWTWO, MAROWAK_ALOLA, CHARIZARD_MEGA_X). 'tier' is one of 1, 3, 5, mega, mega_legendary, primal. Run `npm run build:data` after editing.",
+  "bosses": []
+}
