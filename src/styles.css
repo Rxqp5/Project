@@ -373,3 +373,54 @@ main {
 .rot-when { font-size: 13px; color: var(--muted); }
 .rot-first { color: var(--text); font-weight: 600; }
 .tier-special { background: #fef3c7; color: #92400e; }
+
+/* ---------- My Pokémon ---------- */
+
+.mine-form { align-items: end; }
+.mine-form input:not([type="checkbox"]), .mine-form select {
+  font: inherit;
+  font-size: 16px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  width: 100%;
+}
+.mine-form > label { min-width: 200px; flex: 1 1 200px; }
+.mine-form #fields { flex: 1 1 100%; }
+.mine-form #fields > label { flex: 1 1 200px; }
+.checks label, .settings label.check { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; }
+.checks input { width: auto; }
+.ivs { flex: 1 1 100%; font-size: 14px; }
+.ivs summary { cursor: pointer; color: var(--accent); }
+.iv-row { display: flex; gap: 10px; margin-top: 8px; }
+.iv-row label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); flex: 1; }
+.form-actions { display: flex; gap: 8px; flex-wrap: wrap; flex: 1 1 100%; }
+.form-actions button, .button {
+  font: inherit;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
+.form-actions .primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: default; }
+.error { color: #dc2626; margin: 0; font-size: 14px; flex: 1 1 100%; }
+.error:empty { display: none; }
+#mine-search { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: inherit; }
+
+.mine-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.mine-card { display: flex; gap: 10px; align-items: center; padding: 8px; background: var(--surface-2); border-radius: 10px; }
+.mine-card img { image-rendering: pixelated; flex: none; }
+.mine-body { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.mine-actions { display: grid; gap: 6px; }
+.mine-actions button { font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.mine-actions .danger { color: #dc2626; }
+
+.party-yours { border-left: 4px solid #22c55e; padding-left: 12px; }
+.tips { margin-top: 10px; padding: 10px 12px; background: color-mix(in srgb, #22c55e 8%, var(--surface)); border-radius: 10px; font-size: 14px; }
+.tips h4 { margin: 0 0 6px; }
+.tips ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }

@@ -14,6 +14,8 @@ For each boss the app gives:
 - **Super Mega raids**: shield count, how the shields work, and the best Megas to bring (every trainer needs one)
 - **Max Battles**: the best Dynamax/Gigantamax attackers (ranked by Max Attack damage), the best tanks, and a suggested team of three
 
+**My Pokémon:** add the Pokémon you own (species, CP, moves, and optionally Shadow, can Mega Evolve, Dynamax/Gigantamax and IVs). The app works out each one's level from its CP. Every boss page then shows **your best team** next to the best possible team, plus TM tips ("TM your Tyranitar to Brutal Swing for about 19% more damage"). Your list is saved on your device only, and you can download it as a backup file and load it again on another device. Pokémon GO has no official way for apps to read your account, so the list is entered by hand.
+
 Counters change with your settings: Pokémon level (40/50), weather, the boss's moveset, and whether to include Megas, Shadows, Legendaries and Elite TM moves.
 
 It runs in any browser, works on phones, and can be added to the home screen like an app (it also works offline).
@@ -41,6 +43,8 @@ npm run build:data # re-download game data and rebuild data/game.json
 | `index.html`, `src/app.js`, `src/styles.css` | The app's screens |
 | `src/calc.js` | Battle maths: type chart, damage formula, counter ranking, parties, Max Battles |
 | `src/schedule.js` | Turns the LeekDuck event calendar into the day-by-day rotation |
+| `src/collection.js` | Your own Pokémon: level from CP, ranking them against a boss, TM tips, saving |
+| `src/mine.js` | The My Pokémon page |
 | `scripts/build-data.mjs` | Builds `data/game.json` from public data sources |
 | `data/game.json` | Generated data: every Pokémon, move and raid boss |
 | `data/raids-extra.json` | Raid bosses added by hand (see below) |
