@@ -4,6 +4,8 @@ import {
   pickMaxTeam,
 } from './calc.js';
 import { SCHEDULE_URLS, scheduleItems, lineupItems, rotationDays } from './schedule.js';
+import { rankOwned, rankOwnedMax, moveTips, loadCollection, saveCollection } from './collection.js';
+import { renderMine } from './mine.js';
 
 const app = document.getElementById('app');
 const TIER_ORDER = ['1', '2', '3', '4', '5', 'elite', 'shadow_1', 'shadow_3', 'shadow_5',
@@ -23,6 +25,17 @@ let data;
 let schedule; // { events, lineup, fetched, live }
 const listState = { tier: 'all', query: '' };
 const settings = loadSettings();
+let collection = loadCollection(safeStorage());
+
+function safeStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    // Storage blocked (private browsing): keep the collection for this visit only.
+    const mem = new Map();
+    return { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+  }
+}
 const counterCache = new Map();
 
 function loadSettings() {
@@ -283,6 +296,9 @@ function raidSections(key, tier, bossMoves, superMega, shields) {
   const party = pickParty(counters, undefined, { requireMega: superMega });
   const budget = pickParty(counters, budgetFilter, { requireMega: superMega });
   const rows = (n) => counterRows(counters.slice(0, n), superMega);
+  const owned = rankOwned(data, key, tier, collection, { weather: settings.weather, bossMoves });
+  const yours = pickParty(owned, undefined, { requireMega: superMega, idOf: (c) => c.entryId });
+  const tips = yours.length ? moveTips(owned, yours) : [];
   return {
     total: counters.length,
     rows,
@@ -293,6 +309,7 @@ function raidSections(key, tier, bossMoves, superMega, shields) {
       ${partyBlock('Best team', party, tier, shields, superMega
     ? 'Led by the best Mega for breaking shields, then the strongest five other Pokémon.'
     : 'The strongest six different Pokémon (one Mega at most).')}
+      ${yourTeamBlock(yours, tier, shields, superMega, tips)}
       ${partyBlock('Budget team', budget, tier, shields, superMega
     ? 'A non-Legendary Mega to break a shield, then no Shadows or Legendaries.'
     : 'No Megas, Shadows or Legendaries — Pokémon most trainers can build.')}
@@ -318,6 +335,8 @@ function maxSections(key, tier, bossMoves) {
   const attackers = rankMaxAttackers(data, key, tier, opts);
   const tanks = rankMaxTanks(data, key, tier, opts);
   const team = pickMaxTeam(attackers, tanks);
+  const owned = rankOwnedMax(data, key, tier, collection, opts);
+  const yours = pickMaxTeam(owned.attackers, owned.tanks, { idOf: (c) => c.entryId });
   const maxMove = (a) => `${typeBadge(a.maxType)}${a.gmaxMove ? ' <span class="status status-soon">G-Max</span>' : ''}`;
   const rows = (n) => attackers.slice(0, n).map((a, i) => `
       <tr>
@@ -344,14 +363,17 @@ function maxSections(key, tier, bossMoves) {
       <h2>Suggested team</h2>
       <p class="hint">Two hard hitters and a tank to take the boss's attacks. Bring Max Guard / Max Spirit on the tank.</p>
       <ol class="party-list">
-        ${team.map((c) => `
-          <li>
-            <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
-            <span class="status">${c.role}</span>
-            <strong>${esc(c.name)}</strong>
-            ${c.role === 'Tank' ? `<span class="muted">Survives ~${Math.round(c.survival)}s</span>` : `<span>${moveBadge(c.fast)}</span><span>${maxMove(c)}</span>`}
-          </li>`).join('')}
+        ${team.map((c) => maxTeamCard(c, maxMove)).join('')}
       </ol>
+    </section>
+
+    <section class="panel">
+      ${yours.length ? `
+      <div class="party party-yours">
+        <h3>Your best Max team</h3>
+        <p class="hint">From your Pokémon marked Dynamax or Gigantamax on <a href="#/mine">My Pokémon</a>.</p>
+        <ol class="party-list">${yours.map((c) => maxTeamCard(c, maxMove, true)).join('')}</ol>
+      </div>` : addPokemonPrompt('Max team')}
     </section>
 
     <section class="panel">
@@ -385,6 +407,17 @@ function maxSections(key, tier, bossMoves) {
   };
 }
 
+function maxTeamCard(c, maxMove, owned = false) {
+  return `
+    <li>
+      <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+      <span class="status">${c.role}</span>
+      <strong>${esc(c.name)}</strong>
+      ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}</span>` : ''}
+      ${c.role === 'Tank' ? `<span class="muted">Survives ~${Math.round(c.survival)}s</span>` : `<span>${moveBadge(c.fast)}</span><span>${maxMove(c)}</span>`}
+    </li>`;
+}
+
 function superMegaPanel(shields, breakers, tier) {
   const trueMega = tier === 'super_mega_5';
   return `
@@ -407,11 +440,36 @@ function superMegaPanel(shields, breakers, tier) {
     </section>`;
 }
 
-function partyBlock(title, party, tier, shields, blurb) {
+const addPokemonPrompt = (what) => `
+    <div class="party party-yours">
+      <h3>Your best ${what}</h3>
+      <p class="hint">${collection.length
+    ? `None of your Pokémon can take part yet. <a href="#/mine">Add more on My Pokémon</a>.`
+    : `See the best ${what} you can build from your own Pokémon. <a href="#/mine">Add your Pokémon</a>.`}</p>
+    </div>`;
+
+function yourTeamBlock(team, tier, shields, superMega, tips) {
+  if (!team.length) return addPokemonPrompt('team');
+  const noMega = superMega && !team.some(canBreakShields);
+  return `
+    ${partyBlock('Your best team', team, tier, shields, noMega
+    ? '⚠️ None of your Pokémon can Mega Evolve, and you need a Mega to break a shield. Tick "I can Mega Evolve it" on My Pokémon for any you can.'
+    : `From your ${collection.length} Pokémon, with the moves they have now.${team.length < 6 ? ` Only ${team.length} of yours fit; add more on <a href="#/mine">My Pokémon</a>.` : ''}`, { owned: true })}
+    ${tips.length ? `
+      <div class="tips">
+        <h4>Make your team stronger</h4>
+        <ul>${tips.slice(0, 4).map((t) => `<li><strong>${esc(t.name)}</strong> (CP ${t.cp}): ${[
+    t.newFast && `fast TM to ${moveBadge(t.newFast)}`,
+    t.newCharged && `charged TM to ${moveBadge(t.newCharged)}`,
+  ].filter(Boolean).join(' and ')}${t.elite ? ' (needs an Elite TM)' : ''} for about <strong>${Math.round(t.gain * 100)}% more damage</strong>${t.inTeam ? '' : ', which would earn it a team spot'}.</li>`).join('')}</ul>
+      </div>` : ''}`;
+}
+
+function partyBlock(title, party, tier, shields, blurb, { owned = false } = {}) {
   if (!party.length) return '';
   const trainers = trainersNeeded(party, tier, shields);
   return `
-    <div class="party">
+    <div class="party${owned ? ' party-yours' : ''}">
       <div class="party-head">
         <h3>${title}</h3>
         <span class="trainers" title="Rough estimate, assuming every trainer brings this team">~${trainers} trainer${trainers > 1 ? 's' : ''} needed</span>
@@ -422,6 +480,7 @@ function partyBlock(title, party, tier, shields, blurb) {
           <li>
             <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
             <strong>${esc(c.name)}</strong>
+            ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}</span>` : ''}
             <span>${moveBadge(c.fast, data.pokemon[c.key].eliteFast.includes(c.fast))}</span>
             <span>${moveBadge(c.charged, data.pokemon[c.key].eliteCharged.includes(c.charged))}</span>
           </li>`).join('')}
@@ -453,7 +512,16 @@ function route({ keepScroll = false } = {}) {
     a.getAttribute('href') === `#/${page === 'boss' ? 'bosses' : page || ''}`));
   if (page === 'boss') renderBoss(tier, key, moves ? moves.split(',') : undefined);
   else if (page === 'bosses') renderList();
-  else renderRotation();
+  else if (page === 'mine') {
+    renderMine(app, {
+      data, esc, sprite, typeBadges, moveBadge,
+      getCollection: () => collection,
+      setCollection: (list) => {
+        collection = list;
+        return saveCollection(safeStorage(), list);
+      },
+    });
+  } else renderRotation();
   if (!keepScroll) window.scrollTo({ top: 0 });
 }
 

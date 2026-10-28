@@ -341,8 +341,12 @@ for (const r of extra.bosses || []) {
   addRaid(r.key, String(r.tier), r.status || 'past', 'raids-extra.json', r.shields ? { shields: r.shields } : {});
 }
 
+// CP multiplier for each whole level (index 0 = level 1), used to work out levels from CP.
+const cpm = gm.find((t) => t.templateId === 'PLAYER_LEVEL_SETTINGS').data.playerLevel.cpMultiplier.slice(0, 51);
+
 const output = {
   generated: new Date().toISOString(),
+  cpm,
   types: TYPES,
   typeChart,
   weather,

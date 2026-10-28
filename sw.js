@@ -1,7 +1,7 @@
 // Offline support: always try the network first (so the raid rotation stays current) and fall
 // back to the last cached copy when offline.
-const CACHE = 'raid-guide-v3';
-const SHELL = ['./', 'index.html', 'src/styles.css', 'src/app.js', 'src/calc.js', 'src/schedule.js', 'data/game.json', 'icon.svg', 'manifest.webmanifest'];
+const CACHE = 'raid-guide-v4';
+const SHELL = ['./', 'index.html', 'src/styles.css', 'src/app.js', 'src/calc.js', 'src/schedule.js', 'src/collection.js', 'src/mine.js', 'data/game.json', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

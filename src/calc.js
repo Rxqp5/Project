@@ -225,6 +225,24 @@ export const canBreakShields = (c) => c.mega === 'mega';
 
 const maxCapable = (p) => p.released && p.dynamax && p.fast.length;
 
+// The fast move (and so Max Move) that hits `boss` hardest. `attacker` is the Pokémon's battle stats.
+export function bestMaxMove(p, attacker, fastMoves, boss, data, weather) {
+  const gmaxType = p.gmax && (GMAX_MOVE_TYPE[p.base] || p.types[0]);
+  let best;
+  for (const f of fastMoves) {
+    const fast = data.moves[f];
+    if (!fast) continue;
+    const gmaxMove = fast.type === gmaxType;
+    const maxMove = { type: fast.type, power: gmaxMove ? GMAX_MOVE_POWER : MAX_MOVE_POWER };
+    const maxDamage = damage(maxMove, attacker, boss, data, weather);
+    const fastDps = (damage(fast, attacker, boss, data, weather) / fast.duration) * 1000;
+    if (!best || maxDamage > best.maxDamage || (maxDamage === best.maxDamage && fastDps > best.fastDps)) {
+      best = { fast: f, maxType: fast.type, gmaxMove, maxDamage, fastDps };
+    }
+  }
+  return best;
+}
+
 // Dynamax attackers ranked by the damage of one Max Attack, then by fast move damage, which fills
 // the Max Meter.
 export function rankMaxAttackers(data, bossKey, tier, { level = 40, weather, elite = true } = {}) {
@@ -233,18 +251,7 @@ export function rankMaxAttackers(data, bossKey, tier, { level = 40, weather, eli
   for (const [key, p] of Object.entries(data.pokemon)) {
     if (!maxCapable(p)) continue;
     const attacker = attackerStats(p, { level });
-    const gmaxType = p.gmax && (GMAX_MOVE_TYPE[p.base] || p.types[0]);
-    let best;
-    for (const f of elite ? [...p.fast, ...p.eliteFast] : p.fast) {
-      const fast = data.moves[f];
-      const gmaxMove = fast.type === gmaxType;
-      const maxMove = { type: fast.type, power: gmaxMove ? GMAX_MOVE_POWER : MAX_MOVE_POWER };
-      const maxDamage = damage(maxMove, attacker, boss, data, weather);
-      const fastDps = (damage(fast, attacker, boss, data, weather) / fast.duration) * 1000;
-      if (!best || maxDamage > best.maxDamage || (maxDamage === best.maxDamage && fastDps > best.fastDps)) {
-        best = { fast: f, maxType: fast.type, gmaxMove, maxDamage, fastDps };
-      }
-    }
+    const best = bestMaxMove(p, attacker, elite ? [...p.fast, ...p.eliteFast] : p.fast, boss, data, weather);
     if (best) results.push({ key, dex: p.dex, name: p.name, types: p.types, gmax: Boolean(p.gmax), ...best });
   }
   results.sort((a, b) => b.maxDamage - a.maxDamage || b.fastDps - a.fastDps);
@@ -267,37 +274,38 @@ export function rankMaxTanks(data, bossKey, tier, { level = 40, weather, bossMov
   return results.sort((a, b) => b.survival - a.survival);
 }
 
-// Two hard hitters and a tank, all different species.
-export function pickMaxTeam(attackers, tanks) {
+// Two hard hitters and a tank, all different species (or, with `idOf`, different individuals).
+export function pickMaxTeam(attackers, tanks, { idOf = (c) => c.dex } = {}) {
   const team = [];
   const used = new Set();
   for (const a of attackers) {
-    if (used.has(a.dex)) continue;
+    if (used.has(idOf(a))) continue;
     team.push({ ...a, role: 'Attacker' });
-    used.add(a.dex);
+    used.add(idOf(a));
     if (team.length === 2) break;
   }
-  const tank = tanks.find((t) => !used.has(t.dex));
+  const tank = tanks.find((t) => !used.has(idOf(t)));
   if (tank) team.push({ ...tank, role: 'Tank' });
   return team;
 }
 
 // Six different species, at most one Mega/Primal (only one can be active at a time).
 // With `requireMega`, the best shield-breaking Mega that passes the filter leads the team.
-export function pickParty(counters, filter = () => true, { size = 6, requireMega = false } = {}) {
+// `idOf` decides what counts as "different": species by default, individual Pokémon for a collection.
+export function pickParty(counters, filter = () => true, { size = 6, requireMega = false, idOf = (c) => c.dex } = {}) {
   const party = [];
-  const dexUsed = new Set();
+  const used = new Set();
   let megaUsed = false;
   const leader = requireMega && counters.find((c) => canBreakShields(c) && filter(c, true));
   if (leader) {
     party.push(leader);
-    dexUsed.add(leader.dex);
+    used.add(idOf(leader));
     megaUsed = true;
   }
   for (const c of counters) {
-    if (!filter(c) || dexUsed.has(c.dex) || (c.mega && megaUsed)) continue;
+    if (!filter(c) || used.has(idOf(c)) || (c.mega && megaUsed)) continue;
     party.push(c);
-    dexUsed.add(c.dex);
+    used.add(idOf(c));
     if (c.mega) megaUsed = true;
     if (party.length === size) break;
   }
