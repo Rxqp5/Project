@@ -10,6 +10,8 @@ import { renderPowerUp, renderPokemon } from './pokemon-pages.js';
 import { typeRankings, maxTopAttackers } from './advice.js';
 import { toIcs } from './calendar.js';
 import { renderTypes } from './types-page.js';
+import { openShareDialog } from './share.js';
+import { renderMax } from './max-page.js';
 
 const app = document.getElementById('app');
 const TIER_ORDER = ['1', '2', '3', '4', '5', 'elite', 'shadow_1', 'shadow_3', 'shadow_5',
@@ -221,6 +223,8 @@ function renderBoss(tier, key, bossMoves) {
         <span class="tier tier-${tier}">${TIERS[tier].label} ${isMax ? 'Max Battle' : 'raid'}</span> ${statusBadge(raid)}
         <h1>${esc(name)} <small>#${p.dex}</small></h1>
         <button type="button" id="fav" class="fav-button" aria-pressed="${favourites.has(key)}">${favourites.has(key) ? '★ Favourite' : '☆ Favourite'}</button>
+        ${favouriteReminders(new Set([key])).length ? `<button type="button" id="remind" class="fav-button">🔔 Remind me</button>` : ''}
+        <button type="button" id="share" class="fav-button">📤 Share team</button>
         <div>${typeBadges(p.types)}</div>
         <dl class="facts">
           <div><dt>Boss CP</dt><dd>${boss.cp.toLocaleString()}</dd></div>
@@ -292,6 +296,8 @@ function renderBoss(tier, key, bossMoves) {
       <div class="moves">${[...p.fast, ...p.charged].map((m) => moveBadge(m)).join('')}</div>
     </section>`;
 
+  app.querySelector('#remind')?.addEventListener('click', () => remindFavourites(new Set([key]), `${key.toLowerCase()}-raids.ics`));
+  app.querySelector('#share').addEventListener('click', () => openShare(tier, key, battle));
   app.querySelector('#fav').addEventListener('click', (e) => {
     toggleFavourite(key);
     e.target.setAttribute('aria-pressed', favourites.has(key));
@@ -324,6 +330,38 @@ function renderBoss(tier, key, bossMoves) {
   });
 }
 
+// The share sheet's team pictures: one per team on the page (best, mine, budget).
+function openShare(tier, key, battle) {
+  const raid = findRaid(tier, key) || { key, tier };
+  const p = data.pokemon[key];
+  const mv = (id) => ({ name: data.moves[id].name, type: data.moves[id].type });
+  const member = (c) => {
+    const owned = c.entryId !== undefined;
+    const base = { dex: c.dex, name: c.name };
+    if (c.role === 'Tank') return { ...base, detail: `Tank · survives ~${Math.round(c.survival)}s${owned ? ` · CP ${c.cp}` : ''}`, moves: [] };
+    const moves = c.role
+      ? [mv(c.fast), { name: `${c.gmaxMove ? 'G-Max' : 'Max'} ${c.maxType} move`, type: c.maxType }]
+      : [mv(c.fast), mv(c.charged)];
+    return { ...base, detail: [c.role, owned && `CP ${c.cp} · Lv ${c.level}`].filter(Boolean).join(' · '), moves };
+  };
+  const options = battle.teams
+    .filter(([, team]) => team.length)
+    .map(([label, team]) => ({
+      label,
+      card: {
+        title: bossName(raid),
+        subtitle: `${TIERS[tier].label} ${TIERS[tier].max ? 'Max Battle' : 'raid'}`,
+        bossDex: p.dex,
+        weak: matchups(p.types, data).filter((t) => t.mult > 1.001),
+        heading: label,
+        members: team.map(member),
+        sprite,
+        footer: location.href.split('#')[0].replace(/^https?:\/\//, ''),
+      },
+    }));
+  openShareDialog(options, `${bossName(raid).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-team.png`);
+}
+
 const moreButton = (total) => (total > COUNTERS_SHOWN ? '<button id="more" class="more">Show more</button>' : '');
 
 // Counters, parties and (for Super Mega) shield breakers for a normal raid.
@@ -338,6 +376,7 @@ function raidSections(key, tier, bossMoves, superMega, shields) {
   return {
     total: counters.length,
     rows,
+    teams: [['Best team', party], ['My team', yours], ['Budget team', budget]],
     intro: superMega ? superMegaPanel(shields, counters.filter(canBreakShields).slice(0, 6), tier) : '',
     body: `
     <section class="panel">
@@ -386,6 +425,7 @@ function maxSections(key, tier, bossMoves) {
   return {
     total: attackers.length,
     rows,
+    teams: [['Best Max team', team], ['My Max team', yours]],
     intro: `
     <section class="panel note">
       <h2>Max Battle</h2>
@@ -550,6 +590,7 @@ function route({ keepScroll = false } = {}) {
   else if (page === 'bosses') renderList();
   else if (page === 'mine') renderMine(app, pageContext());
   else if (page === 'types') renderTypes(app, pageContext(), tier);
+  else if (page === 'max') renderMax(app, pageContext());
   else if (page === 'powerup') renderPowerUp(app, pageContext());
   else if (page === 'pokemon') renderPokemon(app, pageContext(), tier);
   else renderRotation();
@@ -615,6 +656,31 @@ function downloadIcs(filename, text) {
   });
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// Favourite bosses' upcoming rotations, alerting the day before and when each starts.
+const DAY_BEFORE = 24 * 60;
+function favouriteReminders(keys) {
+  if (!schedule) return [];
+  const now = new Date();
+  const seen = new Set();
+  return scheduleItems(schedule.events, data)
+    .filter((i) => i.kind === 'boss' && i.key && keys.has(i.key) && i.start > now)
+    .filter((i) => {
+      const id = `${i.tier}:${i.key}:${i.start.getTime()}`;
+      return !seen.has(id) && seen.add(id);
+    })
+    .map((i) => ({
+      uid: `fav-${i.key}-${i.start.getTime()}`,
+      title: `${bossName(i)} in ${TIERS[i.tier]?.label || ''} raids`,
+      start: i.start, end: i.end, url: i.link, alarms: [DAY_BEFORE, 0],
+    }));
+}
+
+function remindFavourites(keys, filename) {
+  const events = favouriteReminders(keys);
+  if (events.length) downloadIcs(filename, toIcs(events, { name: 'Favourite raid bosses' }));
+  return events.length;
 }
 
 function addToCalendar(item) {
@@ -688,6 +754,8 @@ function renderRotation() {
       <h2>★ Your favourites</h2>
       <ul class="reasons">${favsComing.map((i) => `<li><a href="#/boss/${i.tier}/${i.key}">${esc(bossName(i))}</a>:
         ${i.start <= new Date() ? `in raids now, until ${fmtDay(i.end)}` : `from ${fmtDateTime(i.start)}`}</li>`).join('')}</ul>
+      ${favouriteReminders(favourites).length ? `<div class="form-actions"><button type="button" class="button" id="fav-remind">🔔 Remind me about all of these</button></div>
+      <p class="hint">Alerts the day before each one starts, and when it starts.</p>` : ''}
     </section>` : ''}
     <details class="panel reminders">
       <summary><strong>🔔 Reminders</strong> <span class="hint">get Raid Hours, Raid Days and new bosses in your calendar</span></summary>
@@ -711,6 +779,7 @@ function renderRotation() {
           <div class="rot-list compact">${lineup.map(rotationRow).join('')}</div>` : ''}
       </section>`).join('')}`;
   app.querySelectorAll('[data-cal]').forEach((b) => b.addEventListener('click', () => addToCalendar(calendarItems[b.dataset.cal])));
+  app.querySelector('#fav-remind')?.addEventListener('click', () => remindFavourites(favourites, 'favourite-raids.ics'));
 }
 
 async function loadSchedule() {
@@ -726,7 +795,7 @@ async function loadSchedule() {
     // Offline or the feed is down: keep the copy saved when the data was built.
   }
   const page = location.hash.split('/')[1];
-  if (!page || page === 'powerup' || page === 'pokemon') route({ keepScroll: true });
+  if (!page || ['powerup', 'pokemon', 'boss', 'mine', 'max'].includes(page)) route({ keepScroll: true });
 }
 
 async function start() {

@@ -32,6 +32,12 @@ For each boss the app gives:
 
 **Reminders:** the rotation's 🔔 buttons add a Raid Hour, Raid Day, Max Monday or boss rotation to your phone's calendar with an alert. You can also subscribe to `data/raid-calendar.ics`, which the daily build regenerates, so new events appear in your calendar by themselves.
 
+**Favourite reminders:** a favourite boss with an upcoming rotation gets a 🔔 Remind me button, and the rotation has "Remind me about all of these". The calendar alert fires the day before it starts and again when it starts.
+
+**Max Battles:** the Max Battles running now (2★ and up) with your best Dynamax team for each, how much each of your Dynamax Pokémon gets used, and the Dynamax Pokémon worth getting that you don't have yet.
+
+**Share team:** 📤 on any boss page draws a picture of the best team, your team or the budget team (or the Max teams), with the boss, its weaknesses and each Pokémon's moves. It opens your phone's share sheet, or you can save the image.
+
 Counters change with your settings: Pokémon level (40/50), weather, the boss's moveset, and whether to include Megas, Shadows, Legendaries and Elite TM moves.
 
 It runs in any browser, works on phones, and can be added to the home screen like an app (it also works offline).
@@ -65,6 +71,8 @@ npm run build:data # re-download game data and rebuild data/game.json
 | `src/advice.js` | Power-up advice: type rankings, boss placements, costs, verdicts |
 | `src/pokemon-pages.js` | The Power up? and Look up pages |
 | `src/types-page.js` | The type chart and per-type pages |
+| `src/max-page.js` | The Max Battles page |
+| `src/share.js` | Team pictures for sharing |
 | `src/calendar.js` | Calendar (.ics) files for reminders, shared by the app and the build |
 | `data/raid-calendar.ics` | Generated: subscribable calendar of raid events |
 | `scripts/build-data.mjs` | Builds `data/game.json` from public data sources |

@@ -29,3 +29,8 @@ test('long lines are folded at 75 bytes and text is escaped', () => {
   // Calendars join folded lines back together before reading them.
   assert.match(ics.replace(/\r\n /g, ''), /Mega Charizard X\\, Mega Charizard Y\\;/);
 });
+
+test('an event can have several alerts (the day before and at the start)', () => {
+  const ics = toIcs([{ uid: 'f', title: 'Giratina', start: '2026-11-04T06:00:00', end: '2026-11-08T22:00:00', alarms: [1440, 0] }]);
+  assert.deepEqual(ics.match(/TRIGGER:[^\r]+/g), ['TRIGGER:-PT1440M', 'TRIGGER:-PT0M']);
+});
