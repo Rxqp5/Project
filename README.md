@@ -16,6 +16,12 @@ For each boss the app gives:
 
 **My Pokémon:** add the Pokémon you own (species, CP, moves, and optionally Shadow, can Mega Evolve, Dynamax/Gigantamax and IVs). The app works out each one's level from its CP. Every boss page then shows **your best team** next to the best possible team, plus TM tips ("TM your Tyranitar to Brutal Swing for about 19% more damage"). Your list is saved on your device only, and you can download it as a backup file and load it again on another device. Pokémon GO has no official way for apps to read your account, so the list is entered by hand.
 
+**Add from screenshots:** on My Pokémon, pick screenshots of your Pokémon's pages from Pokémon GO (several at once). The app reads the species (even with a nickname, from its candy and moves), CP, HP, current moves, Shadow and Dynamax/Gigantamax. From the CP, HP and power-up stardust cost it works out the exact level and often the exact IVs. Misread CP digits are corrected by picking the closest CP that fits the HP and stardust. Text recognition ([Tesseract.js](https://github.com/naptha/tesseract.js)) runs on the device, so screenshots are never uploaded. You check each Pokémon before it's added.
+
+**Power up?** gives a verdict for each of your Pokémon (power up, raid-ready, only with spare stardust, or don't power up). It's based on how it ranks among the best attackers of its type and how it would do at level 40 against the raid bosses running now or in the next two weeks. It shows the stardust and candy cost to level 40, and tips like "TM it first" or "low Attack IV".
+
+**Look up** shows any Pokémon's raid value: type rankings, best movesets, which current bosses it's good against, its weaknesses, and advice for your copies. You can also look one up from a screenshot.
+
 Counters change with your settings: Pokémon level (40/50), weather, the boss's moveset, and whether to include Megas, Shadows, Legendaries and Elite TM moves.
 
 It runs in any browser, works on phones, and can be added to the home screen like an app (it also works offline).
@@ -44,7 +50,10 @@ npm run build:data # re-download game data and rebuild data/game.json
 | `src/calc.js` | Battle maths: type chart, damage formula, counter ranking, parties, Max Battles |
 | `src/schedule.js` | Turns the LeekDuck event calendar into the day-by-day rotation |
 | `src/collection.js` | Your own Pokémon: level from CP, ranking them against a boss, TM tips, saving |
-| `src/mine.js` | The My Pokémon page |
+| `src/mine.js` | The My Pokémon page, including adding from screenshots |
+| `src/scan.js` | Reads Pokémon GO screenshots: text recognition, species, CP, moves, level and IVs |
+| `src/advice.js` | Power-up advice: type rankings, boss placements, costs, verdicts |
+| `src/pokemon-pages.js` | The Power up? and Look up pages |
 | `scripts/build-data.mjs` | Builds `data/game.json` from public data sources |
 | `data/game.json` | Generated data: every Pokémon, move and raid boss |
 | `data/raids-extra.json` | Raid bosses added by hand (see below) |

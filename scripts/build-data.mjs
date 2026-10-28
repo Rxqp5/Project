@@ -166,6 +166,7 @@ function addPokemon(key, dex, s, form) {
     types, atk, def, sta,
     fast, charged, eliteFast, eliteCharged,
     legendary: s.pokemonClass ? titleCase(s.pokemonClass.replace('POKEMON_CLASS_', '')) : undefined,
+    family: s.familyId?.replace('FAMILY_', ''), // shown in-game as "<FAMILY> CANDY"
     released: released.has(sk),
     shadow: Boolean(s.shadow) && releasedShadow.has(sk),
   };
@@ -343,10 +344,22 @@ for (const r of extra.bosses || []) {
 
 // CP multiplier for each whole level (index 0 = level 1), used to work out levels from CP.
 const cpm = gm.find((t) => t.templateId === 'PLAYER_LEVEL_SETTINGS').data.playerLevel.cpMultiplier.slice(0, 51);
+// Power-up costs per whole level (index 0 = level 1; each level has two power-ups). XL Candy from level 40.
+const upgrades = gm.find((t) => t.templateId === 'POKEMON_UPGRADE_SETTINGS').data.pokemonUpgrades;
+const powerUp = {
+  stardust: upgrades.stardustCost,
+  candy: upgrades.candyCost,
+  xlCandy: upgrades.xlCandyCost,
+  xlFromLevel: upgrades.xlCandyMinPokemonLevel,
+  shadow: upgrades.shadowStardustMultiplier,
+  purified: upgrades.purifiedStardustMultiplier,
+  lucky: 0.5,
+};
 
 const output = {
   generated: new Date().toISOString(),
   cpm,
+  powerUp,
   types: TYPES,
   typeChart,
   weather,
