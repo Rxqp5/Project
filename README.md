@@ -18,6 +18,12 @@ Counters change with your settings: Pokémon level (40/50), weather, the boss's 
 
 It runs in any browser, works on phones, and can be added to the home screen like an app (it also works offline).
 
+## Live app
+
+**https://rxqp5.github.io/Project/**: open it on your phone and use "Add to Home Screen" to install it like an app.
+
+It's published by GitHub Pages (`.github/workflows/pages.yml`) on every change to `main`, and rebuilt every day with fresh game data. You can also trigger a rebuild by hand from the repository's **Actions** tab ("Deploy to GitHub Pages", then "Run workflow").
+
 ## Running it
 
 Needs [Node.js](https://nodejs.org) 18 or newer. There are no packages to install.
