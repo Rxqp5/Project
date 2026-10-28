@@ -1,22 +1,27 @@
 import {
   TIERS, SHIELD_ATK, SHIELD_DEF, matchups, boostedWeather, bossStats, catchCP, rankCounters, pickParty,
-  budgetFilter, canBreakShields, trainersNeeded, bestMovesetsOverall,
+  budgetFilter, canBreakShields, trainersNeeded, bestMovesetsOverall, rankMaxAttackers, rankMaxTanks,
+  pickMaxTeam,
 } from './calc.js';
+import { SCHEDULE_URLS, scheduleItems, lineupItems, rotationDays } from './schedule.js';
 
 const app = document.getElementById('app');
 const TIER_ORDER = ['1', '2', '3', '4', '5', 'elite', 'shadow_1', 'shadow_3', 'shadow_5',
-  'mega', 'mega_legendary', 'primal', 'super_mega_4', 'super_mega_5'];
+  'mega', 'mega_legendary', 'primal', 'super_mega_4', 'super_mega_5',
+  'max_1', 'max_2', 'max_3', 'max_4', 'max_5', 'max_6'];
 const TIER_SHORT = {
   1: '1★', 2: '2★', 3: '3★', 4: '4★', 5: '5★', elite: 'Elite',
   shadow_1: 'Shadow 1★', shadow_3: 'Shadow 3★', shadow_5: 'Shadow 5★',
   mega: 'Mega', mega_legendary: 'Mega Legendary', primal: 'Primal',
   super_mega_4: 'Super Mega 4★', super_mega_5: 'Super Mega 5★',
+  max_1: 'Dynamax 1★', max_2: 'Dynamax 2★', max_3: 'Dynamax 3★', max_4: 'Dynamax 4★', max_5: 'Dynamax 5★',
+  max_6: 'Gigantamax',
 };
-const STATUS_ORDER = { current: 0, upcoming: 1, past: 2, future: 3 };
 const COUNTERS_SHOWN = 20;
 
 let data;
-const listState = { tier: 'now', query: '' };
+let schedule; // { events, lineup, fetched, live }
+const listState = { tier: 'all', query: '' };
 const settings = loadSettings();
 const counterCache = new Map();
 
@@ -48,7 +53,15 @@ const moveBadge = (id, elite) => {
 };
 const fmtMult = (m) => `${(Math.round(m * 1000) / 1000).toString().replace(/^0\./, '.')}×`;
 const fmtDate = (ms) => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-const bossName = (r) => (TIERS[r.tier].shadow ? `Shadow ${data.pokemon[r.key].name}` : data.pokemon[r.key].name);
+const fmtDay = (d) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+const fmtTime = (d) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const fmtDateTime = (d) => `${fmtDay(d)}, ${fmtTime(d)}`;
+function bossName(r) {
+  const p = data.pokemon[r.key];
+  if (TIERS[r.tier].shadow) return `Shadow ${p.name}`;
+  if (TIERS[r.tier].max && !p.gmax) return `Dynamax ${p.name}`;
+  return p.name;
+}
 const findRaid = (tier, key) => data.raids.find((r) => r.tier === tier && r.key === key);
 
 function statusBadge(r) {
@@ -60,10 +73,9 @@ function statusBadge(r) {
 
 // ---------- Boss list ----------
 
-// Tabs: "now" = in raids or announced, "future" = could become a boss one day, else a tier.
+// Tabs: "all", "future" (could become a boss one day), or a tier.
 // Every tab except "future" leaves out bosses that have never actually appeared.
 const TAB_FILTERS = {
-  now: (r) => r.status === 'current' || r.status === 'upcoming',
   all: (r) => r.status !== 'future',
   future: (r) => r.status === 'future',
 };
@@ -75,8 +87,7 @@ function bossList() {
     .filter(tabFilter(listState.tier))
     .filter((r) => !q || bossName(r).toLowerCase().includes(q)
       || data.pokemon[r.key].types.some((t) => t.toLowerCase() === q))
-    .sort((a, b) => (listState.tier === 'now' ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status] : 0)
-      || TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)
+    .sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)
       || data.pokemon[a.key].dex - data.pokemon[b.key].dex
       || data.pokemon[a.key].name.localeCompare(data.pokemon[b.key].name));
 }
@@ -84,7 +95,7 @@ function bossList() {
 function renderList() {
   document.title = 'Raid Boss Guide';
   const count = (tab) => data.raids.filter(tabFilter(tab)).length;
-  const tabs = [['now', 'Raids now'], ['all', 'All'], ...TIER_ORDER, ['future', 'Possible future']]
+  const tabs = [['all', 'All'], ...TIER_ORDER, ['future', 'Possible future']]
     .map((t) => (Array.isArray(t) ? t : [t, TIER_SHORT[t]]))
     .map(([t, label]) => [t, label, count(t)])
     .filter(([, , n]) => n);
@@ -155,19 +166,17 @@ function renderBoss(tier, key, bossMoves) {
   const types = matchups(p.types, data);
   const weak = types.filter((t) => t.mult > 1.001);
   const resist = types.filter((t) => t.mult < 0.999).reverse();
-  const counters = countersFor(key, tier, bossMoves);
-  const party = pickParty(counters, undefined, { requireMega: superMega });
-  const budget = pickParty(counters, budgetFilter, { requireMega: superMega });
-  const shieldBreakers = superMega ? counters.filter(canBreakShields).slice(0, 6) : [];
+  const isMax = Boolean(TIERS[tier].max);
+  const battle = isMax ? maxSections(key, tier, bossMoves) : raidSections(key, tier, bossMoves, superMega, shields);
   const ownMovesets = bestMovesetsOverall(caught, data, { level: settings.level, elite: true }).slice(0, 5);
   const bossMovePairs = p.fast.flatMap((f) => p.charged.map((c) => [f, c]));
 
   app.innerHTML = `
-    <a href="#/" class="back">← All raid bosses</a>
+    <a href="#/bosses" class="back">← All raid bosses</a>
     <section class="boss-head">
       <img src="${sprite(p.dex)}" alt="" width="120" height="120" onerror="this.style.visibility='hidden'">
       <div>
-        <span class="tier tier-${tier}">${TIERS[tier].label} raid</span> ${statusBadge(raid)}
+        <span class="tier tier-${tier}">${TIERS[tier].label} ${isMax ? 'Max Battle' : 'raid'}</span> ${statusBadge(raid)}
         <h1>${esc(name)} <small>#${p.dex}</small></h1>
         <div>${typeBadges(p.types)}</div>
         <dl class="facts">
@@ -181,7 +190,7 @@ function renderBoss(tier, key, bossMoves) {
         </dl>
       </div>
     </section>
-    ${superMega ? superMegaPanel(shields, shieldBreakers, tier) : ''}
+    ${battle.intro}
     ${TIERS[tier].shadow ? `
     <section class="panel note">
       <h2>Shadow raid</h2>
@@ -196,7 +205,7 @@ function renderBoss(tier, key, bossMoves) {
     </section>
 
     <section class="panel">
-      <h2>Raid settings</h2>
+      <h2>${isMax ? 'Battle' : 'Raid'} settings</h2>
       <form id="settings" class="settings">
         <label>Your Pokémon level
           <select name="level">
@@ -219,14 +228,66 @@ function renderBoss(tier, key, bossMoves) {
           </select>
         </label>
         <fieldset>
+          ${isMax ? '' : `
           <label><input type="checkbox" name="megas" ${settings.megas ? 'checked' : ''}> Megas</label>
           <label><input type="checkbox" name="shadows" ${settings.shadows ? 'checked' : ''}> Shadows</label>
-          <label><input type="checkbox" name="legendaries" ${settings.legendaries ? 'checked' : ''}> Legendaries</label>
+          <label><input type="checkbox" name="legendaries" ${settings.legendaries ? 'checked' : ''}> Legendaries</label>`}
           <label><input type="checkbox" name="elite" ${settings.elite ? 'checked' : ''}> Elite TM moves</label>
         </fieldset>
       </form>
     </section>
 
+    ${battle.body}
+
+    <section class="panel">
+      <h2>Best moves for ${esc(caught.name)}</h2>
+      <p class="hint">If you catch it: its strongest movesets for raiding, against a neutral target.</p>
+      <ol class="movesets">
+        ${ownMovesets.map((m) => `<li>${moveBadge(m.fast, caught.eliteFast.includes(m.fast))} + ${moveBadge(m.charged, caught.eliteCharged.includes(m.charged))} <span class="muted">${m.dps.toFixed(1)} DPS</span></li>`).join('')}
+      </ol>
+      <h3>Moves the boss can use</h3>
+      <div class="moves">${[...p.fast, ...p.charged].map((m) => moveBadge(m)).join('')}</div>
+    </section>`;
+
+  let shown = COUNTERS_SHOWN;
+  app.querySelector('#more')?.addEventListener('click', (e) => {
+    shown += COUNTERS_SHOWN;
+    app.querySelector('#counter-rows').innerHTML = battle.rows(shown);
+    if (shown >= battle.total) e.target.remove();
+  });
+
+  app.querySelector('#settings').addEventListener('change', (e) => {
+    const f = e.currentTarget.elements;
+    if (e.target.name === 'bossMoves') {
+      history.replaceState(null, '', `#/boss/${tier}/${key}${f.bossMoves.value ? `/${f.bossMoves.value}` : ''}`);
+      return route({ keepScroll: true });
+    }
+    Object.assign(settings, {
+      level: Number(f.level.value),
+      weather: f.weather.value,
+      megas: f.megas ? f.megas.checked : settings.megas,
+      shadows: f.shadows ? f.shadows.checked : settings.shadows,
+      legendaries: f.legendaries ? f.legendaries.checked : settings.legendaries,
+      elite: f.elite.checked,
+    });
+    saveSettings();
+    route({ keepScroll: true });
+  });
+}
+
+const moreButton = (total) => (total > COUNTERS_SHOWN ? '<button id="more" class="more">Show more</button>' : '');
+
+// Counters, parties and (for Super Mega) shield breakers for a normal raid.
+function raidSections(key, tier, bossMoves, superMega, shields) {
+  const counters = countersFor(key, tier, bossMoves);
+  const party = pickParty(counters, undefined, { requireMega: superMega });
+  const budget = pickParty(counters, budgetFilter, { requireMega: superMega });
+  const rows = (n) => counterRows(counters.slice(0, n), superMega);
+  return {
+    total: counters.length,
+    rows,
+    intro: superMega ? superMegaPanel(shields, counters.filter(canBreakShields).slice(0, 6), tier) : '',
+    body: `
     <section class="panel">
       <h2>Suggested raid parties</h2>
       ${partyBlock('Best team', party, tier, shields, superMega
@@ -243,46 +304,85 @@ function renderBoss(tier, key, bossMoves) {
       <div class="table-wrap">
         <table class="counters">
           <thead><tr><th>#</th><th>Pokémon</th><th>Moves</th><th>DPS</th><th>TDO</th><th>Rating</th></tr></thead>
-          <tbody id="counter-rows">${counterRows(counters.slice(0, COUNTERS_SHOWN), superMega)}</tbody>
+          <tbody id="counter-rows">${rows(COUNTERS_SHOWN)}</tbody>
         </table>
       </div>
-      ${counters.length > COUNTERS_SHOWN ? '<button id="more" class="more">Show more counters</button>' : ''}
+      ${moreButton(counters.length)}
+    </section>`,
+  };
+}
+
+// Max Battles: Dynamax attackers, tanks and a team of three.
+function maxSections(key, tier, bossMoves) {
+  const opts = { level: settings.level, weather: settings.weather, elite: settings.elite, bossMoves };
+  const attackers = rankMaxAttackers(data, key, tier, opts);
+  const tanks = rankMaxTanks(data, key, tier, opts);
+  const team = pickMaxTeam(attackers, tanks);
+  const maxMove = (a) => `${typeBadge(a.maxType)}${a.gmaxMove ? ' <span class="status status-soon">G-Max</span>' : ''}`;
+  const rows = (n) => attackers.slice(0, n).map((a, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><span class="cname">${esc(a.name)}</span><div>${typeBadges(a.types)}</div></td>
+        <td>${moveBadge(a.fast, data.pokemon[a.key].eliteFast.includes(a.fast))}</td>
+        <td>${maxMove(a)}</td>
+        <td>${a.maxDamage.toLocaleString()}</td>
+        <td><div class="bar"><span style="width:${a.rating}%"></span></div>${a.rating}</td>
+      </tr>`).join('');
+  return {
+    total: attackers.length,
+    rows,
+    intro: `
+    <section class="panel note">
+      <h2>Max Battle</h2>
+      <p>Only <strong>Dynamax</strong> Pokémon can join, three per trainer${tier === 'max_6' ? ', with up to 40 trainers' : ', up to four trainers'}.
+      Fast attacks fill your Max Meter; once full you Dynamax for three turns and choose
+      <strong>Max Attack</strong> (its type is your fast move's type), <strong>Max Guard</strong> (shield the team) or
+      <strong>Max Spirit</strong> (heal the team). Gigantamax Pokémon use a stronger G-Max move when their fast move matches it.</p>
+    </section>`,
+    body: `
+    <section class="panel">
+      <h2>Suggested team</h2>
+      <p class="hint">Two hard hitters and a tank to take the boss's attacks. Bring Max Guard / Max Spirit on the tank.</p>
+      <ol class="party-list">
+        ${team.map((c) => `
+          <li>
+            <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+            <span class="status">${c.role}</span>
+            <strong>${esc(c.name)}</strong>
+            ${c.role === 'Tank' ? `<span class="muted">Survives ~${Math.round(c.survival)}s</span>` : `<span>${moveBadge(c.fast)}</span><span>${maxMove(c)}</span>`}
+          </li>`).join('')}
+      </ol>
     </section>
 
     <section class="panel">
-      <h2>Best moves for ${esc(caught.name)}</h2>
-      <p class="hint">If you catch it: its strongest movesets for raiding, against a neutral target.</p>
-      <ol class="movesets">
-        ${ownMovesets.map((m) => `<li>${moveBadge(m.fast, caught.eliteFast.includes(m.fast))} + ${moveBadge(m.charged, caught.eliteCharged.includes(m.charged))} <span class="muted">${m.dps.toFixed(1)} DPS</span></li>`).join('')}
-      </ol>
-      <h3>Moves the boss can use</h3>
-      <div class="moves">${[...p.fast, ...p.charged].map((m) => moveBadge(m)).join('')}</div>
-    </section>`;
+      <h2>Best Max attackers</h2>
+      <p class="hint">Ranked by the damage of one level-3 Max Attack against this boss. * = Elite TM / legacy move.</p>
+      <div class="table-wrap">
+        <table class="counters">
+          <thead><tr><th>#</th><th>Pokémon</th><th>Fast move</th><th>Max move</th><th>Damage</th><th>Rating</th></tr></thead>
+          <tbody id="counter-rows">${rows(COUNTERS_SHOWN)}</tbody>
+        </table>
+      </div>
+      ${moreButton(attackers.length)}
+    </section>
 
-  let shown = COUNTERS_SHOWN;
-  app.querySelector('#more')?.addEventListener('click', (e) => {
-    shown += COUNTERS_SHOWN;
-    app.querySelector('#counter-rows').innerHTML = counterRows(counters.slice(0, shown), superMega);
-    if (shown >= counters.length) e.target.remove();
-  });
-
-  app.querySelector('#settings').addEventListener('change', (e) => {
-    const f = e.currentTarget.elements;
-    if (e.target.name === 'bossMoves') {
-      history.replaceState(null, '', `#/boss/${tier}/${key}${f.bossMoves.value ? `/${f.bossMoves.value}` : ''}`);
-      return route({ keepScroll: true });
-    }
-    Object.assign(settings, {
-      level: Number(f.level.value),
-      weather: f.weather.value,
-      megas: f.megas.checked,
-      shadows: f.shadows.checked,
-      legendaries: f.legendaries.checked,
-      elite: f.elite.checked,
-    });
-    saveSettings();
-    route({ keepScroll: true });
-  });
+    <section class="panel">
+      <h2>Best tanks</h2>
+      <p class="hint">How long each Pokémon lasts against the boss's attacks, before Max Guard.</p>
+      <div class="table-wrap">
+        <table class="counters">
+          <thead><tr><th>#</th><th>Pokémon</th><th>HP</th><th>Survives</th></tr></thead>
+          <tbody>${tanks.slice(0, 10).map((t, i) => `
+            <tr>
+              <td>${i + 1}</td>
+              <td><span class="cname">${esc(t.name)}</span><div>${typeBadges(t.types)}</div></td>
+              <td>${t.hp}</td>
+              <td>~${Math.round(t.survival)}s</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </section>`,
+  };
 }
 
 function superMegaPanel(shields, breakers, tier) {
@@ -349,12 +449,83 @@ function counterRows(rows, superMega) {
 
 function route({ keepScroll = false } = {}) {
   const [, page, tier, key, moves] = location.hash.split('/');
-  if (page === 'boss') {
-    renderBoss(tier, key, moves ? moves.split(',') : undefined);
-    if (!keepScroll) window.scrollTo({ top: 0 });
-  } else {
-    renderList();
+  document.querySelectorAll('.nav a').forEach((a) => a.toggleAttribute('aria-current',
+    a.getAttribute('href') === `#/${page === 'boss' ? 'bosses' : page || ''}`));
+  if (page === 'boss') renderBoss(tier, key, moves ? moves.split(',') : undefined);
+  else if (page === 'bosses') renderList();
+  else renderRotation();
+  if (!keepScroll) window.scrollTo({ top: 0 });
+}
+
+// ---------- Rotation ----------
+
+const SPECIAL_LABELS = { 'raid-hour': 'Raid Hour', 'raid-day': 'Raid Day', 'max-mondays': 'Max Monday' };
+// Tiers that only appear in LeekDuck's undated lineup (the others come with dates).
+const UNDATED_TIERS = new Set(['1', '3', 'shadow_1', 'shadow_3']);
+
+function rotationRow(item) {
+  const p = item.key && data.pokemon[item.key];
+  const name = p ? bossName(item) : item.name;
+  const href = p ? `#/boss/${item.tier}/${item.key}` : item.link;
+  const label = item.kind === 'special' ? SPECIAL_LABELS[item.type] || 'Event' : TIER_SHORT[item.tier] || '';
+  let when = '';
+  if (item.kind === 'special') when = `${fmtTime(item.start)} – ${fmtTime(item.end)}`;
+  else if (item.first) when = `${fmtDateTime(item.start)} → ${fmtDateTime(item.end)}`;
+  else if (item.endsToday) when = `Last day · ends ${fmtTime(item.end)}`;
+  else if (item.kind === 'boss') when = `Until ${fmtDay(item.end)}`;
+  return `
+    <a class="rot ${item.kind === 'special' ? 'rot-special' : ''}" href="${esc(href)}" ${p ? '' : 'target="_blank" rel="noopener"'}>
+      ${p ? `<img src="${sprite(p.dex)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">★</span>'}
+      <span class="rot-body">
+        <span><span class="tier tier-${item.kind === 'special' ? 'special' : item.tier}">${label}</span>
+          ${item.first && item.kind === 'boss' && item.startsToday ? '<span class="status status-soon">Starts today</span>' : ''}</span>
+        <strong>${esc(name)}${item.shiny ? ' <span title="Can be shiny">✨</span>' : ''}</strong>
+        ${when ? `<span class="rot-when${item.first ? ' rot-first' : ''}">${when}</span>` : ''}
+      </span>
+    </a>`;
+}
+
+function renderRotation() {
+  document.title = 'Raid rotation · Raid Boss Guide';
+  if (!schedule) {
+    app.innerHTML = '<p class="loading">Loading the raid rotation…</p>';
+    return;
   }
+  const items = scheduleItems(schedule.events, data);
+  const days = rotationDays(items);
+  const lineup = lineupItems(schedule.lineup, data).filter((r) => UNDATED_TIERS.has(r.tier));
+  const order = (i) => (i.kind === 'special' ? -1 : TIER_ORDER.length - TIER_ORDER.indexOf(i.tier));
+  app.innerHTML = `
+    <section class="rotation-head">
+      <h1>Raid rotation</h1>
+      <p class="hint">Times are your local time. Full dates are shown on the first day each boss appears.
+      From <a href="https://leekduck.com/events/" target="_blank" rel="noopener">LeekDuck</a>,
+      ${schedule.live ? 'checked just now' : `saved ${fmtDay(new Date(schedule.fetched))} (offline copy)`}.</p>
+    </section>
+    ${days.map((d, n) => `
+      <section class="day">
+        <h2>${n === 0 ? 'Today · ' : n === 1 ? 'Tomorrow · ' : ''}${fmtDay(d.date)}</h2>
+        ${d.items.length ? `<div class="rot-list">${[...d.items].sort((a, b) => order(a) - order(b)).map(rotationRow).join('')}</div>`
+    : '<p class="hint">No dated raids announced.</p>'}
+        ${n === 0 && lineup.length ? `
+          <h3>Also in raids now <span class="hint">(no end date announced)</span></h3>
+          <div class="rot-list compact">${lineup.map(rotationRow).join('')}</div>` : ''}
+      </section>`).join('')}`;
+}
+
+async function loadSchedule() {
+  schedule = { ...data.schedule, live: false };
+  try {
+    const get = (url) => fetch(url, { signal: AbortSignal.timeout(8000) }).then((r) => {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    });
+    const [events, lineup] = await Promise.all([get(SCHEDULE_URLS.events), get(SCHEDULE_URLS.lineup)]);
+    schedule = { events, lineup, fetched: new Date().toISOString(), live: true };
+  } catch {
+    // Offline or the feed is down: keep the copy saved when the data was built.
+  }
+  if (!location.hash.split('/')[1]) route({ keepScroll: true });
 }
 
 async function start() {
@@ -368,6 +539,7 @@ async function start() {
   document.getElementById('data-date').textContent = `Updated ${new Date(data.generated).toLocaleDateString()}.`;
   window.addEventListener('hashchange', () => route());
   route();
+  loadSchedule();
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

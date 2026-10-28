@@ -58,3 +58,15 @@ test('live raid data includes Super Mega and Shadow tiers', () => {
   assert.ok(data.raids.some((r) => r.key === 'VICTREEBEL_MEGA' && r.tier === 'super_mega_4'));
   assert.ok(data.pokemon.NIDORAN_FEMALE && data.pokemon.NIDORAN_MALE);
 });
+
+test('Max Battles only use Dynamax Pokémon and pick two attackers and a tank', async () => {
+  const { rankMaxAttackers, rankMaxTanks, pickMaxTeam } = await import('../src/calc.js');
+  const attackers = rankMaxAttackers(data, 'MACHOP', 'max_2');
+  assert.ok(attackers.every((a) => data.pokemon[a.key].dynamax));
+  assert.ok(['Psychic', 'Flying', 'Fairy'].includes(attackers[0].maxType));
+  const gmax = rankMaxAttackers(data, 'CHARIZARD_GIGANTAMAX', 'max_6').find((a) => a.gmaxMove);
+  assert.ok(gmax && data.pokemon[gmax.key].gmax);
+  const team = pickMaxTeam(attackers, rankMaxTanks(data, 'MACHOP', 'max_2'));
+  assert.deepEqual(team.map((t) => t.role), ['Attacker', 'Attacker', 'Tank']);
+  assert.equal(new Set(team.map((t) => t.dex)).size, 3);
+});

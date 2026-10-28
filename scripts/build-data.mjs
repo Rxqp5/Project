@@ -9,6 +9,7 @@
 //   - Pokebattler raid list:   current, upcoming and past bosses for every raid tier (incl. Super Mega, Shadow)
 //   - Pokebattler Pokémon/moves: newer Megas and moves the game master doesn't have yet
 //   - pogoapi.net raid list:   older raid history (last updated November 2025), merged in as past bosses
+//   - ScrapedDuck (LeekDuck):  raid rotation dates; the app also fetches this live, this is the offline copy
 // Bosses added by hand live in data/raids-extra.json and are merged in last.
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -26,6 +27,8 @@ const SOURCES = {
   pokebattlerPokemon: 'https://fight.pokebattler.com/pokemon',
   pokebattlerMoves: 'https://fight.pokebattler.com/moves',
   raids: 'https://pogoapi.net/api/v1/raid_bosses.json',
+  events: 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/events.json',
+  lineup: 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/raids.json',
 };
 
 // Order of attackScalar entries in the game master's typeEffective settings.
@@ -50,8 +53,8 @@ async function load(name) {
 const typeName = (t) => t && t.replace('POKEMON_TYPE_', '').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 const titleCase = (s) => s.toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-const [gm, pvpoke, pokebattler, pbPokemon, pbMoves, raidSource] = await Promise.all(
-  ['gm', 'pvpoke', 'pokebattler', 'pokebattlerPokemon', 'pokebattlerMoves', 'raids'].map(load));
+const [gm, pvpoke, pokebattler, pbPokemon, pbMoves, raidSource, events, lineup] = await Promise.all(
+  ['gm', 'pvpoke', 'pokebattler', 'pokebattlerPokemon', 'pokebattlerMoves', 'raids', 'events', 'lineup'].map(load));
 const extra = JSON.parse(await readFile(`${root}data/raids-extra.json`, 'utf8'));
 
 // ---------- Type chart & weather ----------
@@ -276,7 +279,34 @@ const PB_TIERS = {
   RAID_LEVEL_MEGA: 'mega', RAID_LEVEL_MEGA_5: 'mega_legendary',
   RAID_LEVEL_4_MEGA_ENHANCED: 'super_mega_4', RAID_LEVEL_5_MEGA_ENHANCED: 'super_mega_5',
   RAID_LEVEL_1_SHADOW: 'shadow_1', RAID_LEVEL_3_SHADOW: 'shadow_3', RAID_LEVEL_5_SHADOW: 'shadow_5',
+  RAID_LEVEL_1_MAX: 'max_1', RAID_LEVEL_2_MAX: 'max_2', RAID_LEVEL_3_MAX: 'max_3', RAID_LEVEL_4_MAX: 'max_4',
+  RAID_LEVEL_5_MAX: 'max_5', RAID_LEVEL_6_MAX: 'max_6',
 };
+
+// ---------- Dynamax & Gigantamax ----------
+// Only Dynamax-capable Pokémon can be used in Max Battles. Gigantamax forms keep their species'
+// stats and moves but get a stronger signature G-Max move, so they're separate entries.
+const dynamaxIds = new Set(pokebattler.dynamaxPokemon);
+const gmaxIds = new Set([...dynamaxIds, ...pokebattler.tiers.flatMap((t) => t.raids.map((r) => r.pokemon))]
+  .filter((id) => id.endsWith('_GIGANTAMAX')));
+for (const id of gmaxIds) {
+  const baseKey = resolveKey(id.replace(/_GIGANTAMAX$/, ''));
+  const base = pokemon[baseKey];
+  if (!base) continue;
+  pokemon[`${baseKey}_GIGANTAMAX`] = {
+    ...base,
+    name: `Gigantamax ${base.name}`,
+    shadow: false,
+    gmax: true,
+    dynamax: dynamaxIds.has(id),
+    base: baseKey,
+  };
+}
+for (const id of dynamaxIds) {
+  if (id.endsWith('_GIGANTAMAX')) continue;
+  const key = resolveKey(id);
+  if (pokemon[key]) pokemon[key].dynamax = true;
+}
 for (const { tier: pbTier, raids: bosses } of pokebattler.tiers) {
   const [, base, suffix] = /^(.*?)(_LEGACY|_FUTURE)?$/.exec(pbTier);
   const tier = PB_TIERS[base];
@@ -319,6 +349,7 @@ const output = {
   moves,
   pokemon,
   raids: [...raids.values()],
+  schedule: { fetched: new Date().toISOString(), events, lineup },
 };
 await writeFile(`${root}data/game.json`, JSON.stringify(output));
 console.log(`Wrote data/game.json: ${Object.keys(pokemon).length} Pokémon, ${Object.keys(moves).length} moves, ${raids.size} raid bosses.`);

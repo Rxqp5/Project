@@ -23,6 +23,23 @@ export const TIERS = {
   shadow_1: { label: 'Shadow 1-Star', hp: 600, cpm: 0.5974, time: 180, shadow: true },
   shadow_3: { label: 'Shadow 3-Star', hp: 4000, cpm: 0.7600, time: 180, shadow: true },
   shadow_5: { label: 'Shadow 5-Star', hp: 15000, cpm: 0.8200, time: 300, shadow: true },
+  // Max Battles (Power Spots): only Dynamax Pokémon can join, in teams of three.
+  max_1: { label: 'Dynamax 1-Star', hp: 1700, cpm: 0.1500, time: 480, max: true },
+  max_2: { label: 'Dynamax 2-Star', hp: 5600, cpm: 0.3800, time: 480, max: true },
+  max_3: { label: 'Dynamax 3-Star', hp: 10000, cpm: 0.5000, time: 480, max: true },
+  max_4: { label: 'Dynamax 4-Star', hp: 20000, cpm: 0.6000, time: 480, max: true },
+  max_5: { label: 'Dynamax 5-Star', hp: 13000, cpm: 0.7000, time: 400, max: true },
+  max_6: { label: 'Gigantamax', hp: 100000, cpm: 0.7650, time: 600, max: true },
+};
+
+// Max Attack power at move level 3; Gigantamax Pokémon's G-Max moves hit harder.
+export const MAX_MOVE_POWER = 350;
+export const GMAX_MOVE_POWER = 450;
+// A Max Move takes the type of the fast move. A G-Max move has a fixed type, which is the
+// species' first type except for these.
+const GMAX_MOVE_TYPE = {
+  LAPRAS: 'Ice', HATTERENE: 'Fairy', DURALUDON: 'Dragon',
+  URSHIFU_SINGLE_STRIKE: 'Dark', URSHIFU_RAPID_STRIKE: 'Water',
 };
 
 // While a Super Mega boss's shields are up it hits harder and takes far less damage.
@@ -203,6 +220,67 @@ export function rankCounters(data, bossKey, tier, opts = {}) {
 
 // Only true Mega Evolutions break Super Mega shields; Primal Reversion doesn't count.
 export const canBreakShields = (c) => c.mega === 'mega';
+
+// ---------- Max Battles ----------
+
+const maxCapable = (p) => p.released && p.dynamax && p.fast.length;
+
+// Dynamax attackers ranked by the damage of one Max Attack, then by fast move damage, which fills
+// the Max Meter.
+export function rankMaxAttackers(data, bossKey, tier, { level = 40, weather, elite = true } = {}) {
+  const boss = bossStats(data.pokemon[bossKey], tier);
+  const results = [];
+  for (const [key, p] of Object.entries(data.pokemon)) {
+    if (!maxCapable(p)) continue;
+    const attacker = attackerStats(p, { level });
+    const gmaxType = p.gmax && (GMAX_MOVE_TYPE[p.base] || p.types[0]);
+    let best;
+    for (const f of elite ? [...p.fast, ...p.eliteFast] : p.fast) {
+      const fast = data.moves[f];
+      const gmaxMove = fast.type === gmaxType;
+      const maxMove = { type: fast.type, power: gmaxMove ? GMAX_MOVE_POWER : MAX_MOVE_POWER };
+      const maxDamage = damage(maxMove, attacker, boss, data, weather);
+      const fastDps = (damage(fast, attacker, boss, data, weather) / fast.duration) * 1000;
+      if (!best || maxDamage > best.maxDamage || (maxDamage === best.maxDamage && fastDps > best.fastDps)) {
+        best = { fast: f, maxType: fast.type, gmaxMove, maxDamage, fastDps };
+      }
+    }
+    if (best) results.push({ key, dex: p.dex, name: p.name, types: p.types, gmax: Boolean(p.gmax), ...best });
+  }
+  results.sort((a, b) => b.maxDamage - a.maxDamage || b.fastDps - a.fastDps);
+  const top = results[0]?.maxDamage || 1;
+  for (const r of results) r.rating = Math.round((100 * r.maxDamage) / top);
+  return results;
+}
+
+// Dynamax Pokémon ranked by how long they survive the boss's attacks.
+export function rankMaxTanks(data, bossKey, tier, { level = 40, weather, bossMoves } = {}) {
+  const bossPokemon = data.pokemon[bossKey];
+  const boss = bossStats(bossPokemon, tier);
+  const results = [];
+  for (const [key, p] of Object.entries(data.pokemon)) {
+    if (!maxCapable(p)) continue;
+    const tank = attackerStats(p, { level });
+    const incoming = averageBossDps(bossPokemon, boss, tank, data, weather, bossMoves);
+    results.push({ key, dex: p.dex, name: p.name, types: p.types, hp: tank.hp, survival: tank.hp / incoming });
+  }
+  return results.sort((a, b) => b.survival - a.survival);
+}
+
+// Two hard hitters and a tank, all different species.
+export function pickMaxTeam(attackers, tanks) {
+  const team = [];
+  const used = new Set();
+  for (const a of attackers) {
+    if (used.has(a.dex)) continue;
+    team.push({ ...a, role: 'Attacker' });
+    used.add(a.dex);
+    if (team.length === 2) break;
+  }
+  const tank = tanks.find((t) => !used.has(t.dex));
+  if (tank) team.push({ ...tank, role: 'Tank' });
+  return team;
+}
 
 // Six different species, at most one Mega/Primal (only one can be active at a time).
 // With `requireMega`, the best shield-breaking Mega that passes the filter leads the team.

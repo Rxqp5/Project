@@ -1,6 +1,7 @@
-// Offline support: serve the app shell and data from cache, refreshing in the background.
-const CACHE = 'raid-guide-v2';
-const SHELL = ['./', 'index.html', 'src/styles.css', 'src/app.js', 'src/calc.js', 'data/game.json', 'icon.svg', 'manifest.webmanifest'];
+// Offline support: always try the network first (so the raid rotation stays current) and fall
+// back to the last cached copy when offline.
+const CACHE = 'raid-guide-v3';
+const SHELL = ['./', 'index.html', 'src/styles.css', 'src/app.js', 'src/calc.js', 'src/schedule.js', 'data/game.json', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -14,12 +15,10 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(caches.open(CACHE).then(async (cache) => {
-    const cached = await cache.match(e.request);
-    const fresh = fetch(e.request).then((res) => {
+  e.respondWith(caches.open(CACHE).then((cache) => fetch(e.request)
+    .then((res) => {
       if (res.ok) cache.put(e.request, res.clone());
       return res;
-    }).catch(() => cached);
-    return cached || fresh;
-  }));
+    })
+    .catch(() => cache.match(e.request).then((cached) => cached || Response.error()))));
 });
