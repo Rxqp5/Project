@@ -209,7 +209,12 @@ function bindLookup(app, ctx, byName) {
     if (!file) return;
     msg.textContent = 'Reading the screenshot… (the first one takes a little longer)';
     try {
-      const result = readPokemon(await readScreenshot(file), ctx.data);
+      const shot = await readScreenshot(file);
+      if (shot.kind === 'storage') {
+        msg.textContent = "That's your storage list. Tap the Pokémon in Pokémon GO and screenshot its own page instead.";
+        return;
+      }
+      const result = readPokemon(shot.parsed, ctx.data);
       if (!result.key) {
         msg.textContent = "Couldn't tell which Pokémon that is. Try a screenshot of its page in Pokémon GO, or pick it above.";
         return;

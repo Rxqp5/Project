@@ -133,7 +133,8 @@ export function adviseEntry(data, entry, { rankings, bosses, maxBosses = [] }) {
   const notes = [];
   const ivs = entry.ivs || null;
   if (ivs && ivs.atk < 10 && verdict === 'power') notes.push(`Its Attack IV is low (${ivs.atk}/15): a better one would be worth more stardust.`);
-  if (bestType && (entry.fast !== bestType.fast || !entry.charged.includes(bestType.charged)) && verdict !== 'skip') {
+  if (entry.movesUnknown && verdict !== 'skip') notes.push("Its moves aren't checked yet (best moves assumed): scan its page to confirm before spending stardust.");
+  else if (bestType && (entry.fast !== bestType.fast || !entry.charged.includes(bestType.charged)) && verdict !== 'skip') {
     notes.push(`TM it to ${[entry.fast !== bestType.fast && data.moves[bestType.fast].name, !entry.charged.includes(bestType.charged) && data.moves[bestType.charged].name].filter(Boolean).join(' + ')} first.`);
   }
   if (verdict === 'ready' && bestType && bestType.rank <= 3 && entry.level < 50) notes.push('One of the very best: worth XL Candy to go past level 40 if you have it.');

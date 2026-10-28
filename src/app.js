@@ -482,7 +482,7 @@ function partyBlock(title, party, tier, shields, blurb, { owned = false } = {}) 
           <li>
             <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
             <strong>${esc(c.name)}</strong>
-            ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}</span>` : ''}
+            ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}${c.movesUnknown ? ' · moves not checked' : ''}</span>` : ''}
             <span>${moveBadge(c.fast, data.pokemon[c.key].eliteFast.includes(c.fast))}</span>
             <span>${moveBadge(c.charged, data.pokemon[c.key].eliteCharged.includes(c.charged))}</span>
           </li>`).join('')}

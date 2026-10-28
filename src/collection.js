@@ -3,8 +3,9 @@
 //
 // A collection entry looks like:
 //   { id, key, cp, level, ivs: { atk, def, sta } | null, fast, charged: [id, id?],
-//     shadow, mega, dynamax, gmax }
+//     shadow, mega, dynamax, gmax, movesUnknown }
 // `mega` means the player can Mega Evolve it; `dynamax`/`gmax` that it can join Max Battles.
+// `movesUnknown` marks a storage import, given its best moves until its own page is scanned.
 
 import {
   SHADOW_ATK, SHADOW_DEF, bossStats, averageBossDps, movesetPerformance, rankMovesets, bestMaxMove,
@@ -89,6 +90,7 @@ export function rankOwned(data, bossKey, tier, collection, { weather, bossMoves 
       const [ideal] = rankMovesets(p, attacker, boss, incoming, data, { weather, elite: true });
       results.push({
         entryId: entry.id, key, dex: p.dex, types: p.types, mega: p.mega, legendary: Boolean(p.legendary),
+        movesUnknown: Boolean(entry.movesUnknown),
         shadow: Boolean(entry.shadow), level: entry.level, cp: entry.cp,
         name: ownedName(entry, p),
         fast: entry.fast, ...best,
@@ -107,7 +109,8 @@ export function moveTips(ranked, team, minGain = 0.1) {
   const seen = new Set();
   const tips = [];
   for (const r of ranked) {
-    if (!r.ideal || seen.has(r.entryId)) continue;
+    // Assumed moves (storage imports) are already its best, so there's nothing to suggest.
+    if (!r.ideal || r.movesUnknown || seen.has(r.entryId)) continue;
     seen.add(r.entryId);
     const gain = r.ideal.dps / r.dps - 1;
     if (gain < minGain || (!inTeam.has(r.entryId) && r.ideal.dps <= weakest)) continue;
