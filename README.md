@@ -20,6 +20,8 @@ For each boss the app gives:
 
 **Import from your storage list:** screenshots of the storage grid (sorted by CP) add lots of Pokémon at once. The app reads each tile's name and CP, ignoring the stars and sparkles. It picks the form that fits the CP (e.g. Crowned Zacian), spots Mega Evolutions active now (red CP) and flags nicknames for you to pick. Storage doesn't show moves, so each one gets its usual raid moveset and is marked "moves not checked". Scanning that Pokémon's own page later fills in its real moves.
 
+**Shinies:** storage screenshots are checked for the small sparkle the game shows under a shiny's CP, and a "SHINY" tag on a Pokémon's page counts too. You can also tick ✨ Shiny by hand. Your shinies show with their shiny sprites in My Pokémon (with a ✨ Shiny only filter), your teams and shared team pictures.
+
 **Power up?** gives a verdict for each of your Pokémon (power up, raid-ready, only with spare stardust, or don't power up). It's based on how it ranks among the best attackers of its type and how it would do at level 40 against the raid bosses running now or in the next two weeks. It shows the stardust and candy cost to level 40, and tips like "TM it first" or "low Attack IV".
 
 **Look up** shows any Pokémon's raid value: type rankings, best movesets, which current bosses it's good against, its weaknesses, and advice for your copies. You can also look one up from a screenshot.

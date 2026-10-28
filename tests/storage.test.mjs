@@ -39,3 +39,36 @@ test('nicknames are flagged for the player to pick, and moves are assumed', () =
   assert.equal(garchomp.movesUnknown, true);
   assert.ok(garchomp.fast && garchomp.charged.length);
 });
+
+test('the shiny sparkle under a CP is detected by its colour', async () => {
+  const { sparkleScore, SPARKLE_MIN_PIXELS, isSparklePixel } = await import('../src/scan.js');
+  const width = 1290;
+  const height = 400;
+  const blank = () => {
+    const px = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < px.length; i += 4) px.set([240, 248, 240, 255], i);
+    return px;
+  };
+  const cpBox = { x0: 180, y0: 100, x1: 330, y1: 150 };
+  const paint = (px, rgb) => {
+    for (let y = 150; y < 175; y++) for (let x = 120; x < 160; x++) px.set([...rgb, 255], (y * width + x) * 4);
+  };
+  const shiny = blank();
+  paint(shiny, [48, 96, 112]); // the sparkle's slate blue
+  const sharpedo = blank();
+  paint(sharpedo, [32, 80, 128]); // a blue sprite
+  const label = blank();
+  paint(label, [80, 100, 108]); // the grey "CP" label
+  assert.ok(sparkleScore(shiny, width, height, cpBox) >= SPARKLE_MIN_PIXELS);
+  assert.equal(sparkleScore(sharpedo, width, height, cpBox), 0);
+  assert.equal(sparkleScore(label, width, height, cpBox), 0);
+  assert.equal(isSparklePixel(48, 96, 112), true);
+});
+
+test('storage tiles carry their CP box, and shiny tiles make shiny drafts', () => {
+  const tiles = parseGrid(screens['storage-1'], width);
+  assert.ok(tiles.filter((t) => t.cpText).every((t) => t.cpBox && t.cpBox.x1 > t.cpBox.x0));
+  const drafts = readGridTiles(tiles.map((t) => ({ ...t, shiny: t.name === 'Aggron' })), data, width);
+  assert.equal(drafts.find((d) => d.key === 'AGGRON').shiny, true);
+  assert.equal(drafts.find((d) => d.key === 'GYARADOS').shiny, false);
+});

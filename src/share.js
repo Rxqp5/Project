@@ -63,7 +63,7 @@ export async function drawTeamCard(card) {
   g.fillStyle = bg;
   g.fillRect(0, 0, W, H);
 
-  const sprites = await Promise.all([card.bossDex, ...card.members.map((m) => m.dex)].map((d) => loadImage(card.sprite(d))));
+  const sprites = await Promise.all([card.sprite(card.bossDex), ...card.members.map((m) => card.sprite(m.dex, m.shiny))].map(loadImage));
 
   // Header: boss name, tier, sprite, weaknesses.
   g.fillStyle = '#9ca3af';

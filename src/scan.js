@@ -100,6 +100,8 @@ export function parseScreen(text, bandText = '') {
     // A Mega Evolution that's active shows a countdown ("07:36 left").
     megaActive: /\b\d{1,2} ?[:.]? ?\d{2} LEFT\b/.test(flat),
     canMega: /\bMEGA EVOLVE\b/.test(flat),
+    // The game doesn't label shinies on this page, but players often tag them "SHINY".
+    shiny: /\bSHINY\b/.test(flat),
     dynamax: /\bMAX (MOVES|ATTACK|GUARD|SPIRIT)\b|\bDYNAMAX\b/.test(flat),
     gmax: /\bG ?MAX\b|\bGIGANTAMAX\b/.test(flat),
   };
@@ -323,6 +325,7 @@ export function readPokemon(parsed, data) {
     charged,
     shadow: parsed.shadow && p.shadow,
     mega: id.form !== id.key || Boolean(parsed.canMega),
+    shiny: Boolean(parsed.shiny),
     megaActive: id.form !== id.key ? id.form : null,
     // Kept so the level and IVs can be worked out exactly once the player types a hidden CP.
     hint: { hp: parsed.hp, powerUps: parsed.powerUps, stardust: parsed.stardust, shadow: parsed.shadow, lucky: parsed.lucky },
@@ -368,6 +371,14 @@ export function isStorageGrid(words) {
   return words.filter((w) => /^\d{3,4}$/.test(w.text)).length >= 6;
 }
 
+// The box of just the digits: the reader sometimes joins the small "CP" label to the number
+// ("CP3045"), so the left edge is moved past any non-digit characters.
+function digitBox(w) {
+  const lead = (/^\D*/.exec(w.text) || [''])[0].length;
+  const x0 = lead ? w.x1 - ((w.x1 - w.x0) * (w.text.length - lead)) / w.text.length : w.x0;
+  return { x0, y0: w.y0, x1: w.x1, y1: w.y1 };
+}
+
 export function parseGrid(words, width) {
   const colOf = (w) => Math.min(2, Math.floor((((w.x0 + w.x1) / 2) / width) * 3));
   const tileHeight = (width / 3) * 1.35;
@@ -398,7 +409,12 @@ export function parseGrid(words, width) {
       .sort((a, b) => b.y0 - a.y0)[0];
     const name = line.words.sort((a, b) => a.x0 - b.x0).map((w) => w.text).join(' ')
       .replace(/^[^A-Za-z]+/, '').replace(/[^A-Za-z0-9'’.\- ]/g, '').trim();
-    if (name.length >= 2) tiles.push({ name, cpText: cp ? digits(cp) : '', col: line.col, y: line.y, offset: cp ? line.y - cp.y0 : null });
+    if (name.length >= 2) {
+      tiles.push({
+        name, cpText: cp ? digits(cp) : '', col: line.col, y: line.y, offset: cp ? line.y - cp.y0 : null,
+        cpBox: cp ? digitBox(cp) : null,
+      });
+    }
   }
   return tiles;
 }
@@ -439,8 +455,15 @@ export function readGridTiles(tiles, data, width) {
   };
   const isName = (text) => matchSpecies(text).length > 0;
   return dropSpriteNoise(tiles, isName, width).map((t) => {
-    const cp = Number(t.cpText) || null;
-    const draft = { source: 'storage', name: t.name, key: null, cp, problems: [], movesUnknown: true, fast: null, charged: [] };
+    let cp = Number(t.cpText) || null;
+    // The shiny sparkle next to the CP is sometimes read as a leading "1" ("12686").
+    const forms0 = matchSpecies(t.name);
+    if (cp && t.cpText.length === 5 && t.cpText.startsWith('1') && forms0.length
+      && !forms0.some((k) => fits(data.pokemon[k], cp))) cp = Number(t.cpText.slice(1));
+    const draft = {
+      source: 'storage', name: t.name, key: null, cp, problems: [], movesUnknown: true, fast: null, charged: [],
+      shiny: Boolean(t.shiny),
+    };
     const forms = matchSpecies(t.name);
     if (!forms.length) {
       draft.problems.push(`"${t.name}" looks like a nickname: pick the Pokémon.`);
@@ -479,6 +502,34 @@ export function readGridTiles(tiles, data, width) {
     if (draft.cp) draft.level = estimateLevel(data, data.pokemon[draft.megaActive || key], draft.cp);
     return draft;
   });
+}
+
+// ---------- Shiny sparkle (storage) ----------
+
+// Storage marks shinies with a small dark slate-blue sparkle (✦✦) just under the CP, on the left.
+// Its colour is distinct from the grey "CP" label and from blue sprites (tested on real screenshots).
+export const isSparklePixel = (r, g, b) => r >= 30 && r <= 85 && g >= 78 && g <= 112 && b >= 92 && b <= 125
+  && b - g < 30 && g - r > 35;
+export const SPARKLE_MIN_PIXELS = 60;
+
+// Counts sparkle-coloured pixels in the spot under a tile's CP. `pixels` is RGBA data of an image
+// `imageWidth` wide; `cpBox` is the CP number's box. Offsets are scaled from a 1290px-wide screen.
+export function sparkleScore(pixels, imageWidth, imageHeight, cpBox) {
+  const k = imageWidth / 1290;
+  const h = cpBox.y1 - cpBox.y0;
+  const x0 = Math.max(0, Math.round(cpBox.x0 - 75 * k));
+  // Stop just left of the digits: they're a similar slate colour.
+  const x1 = Math.min(imageWidth, Math.round(cpBox.x0 - 5 * k));
+  const y0 = Math.max(0, Math.round(cpBox.y0 + 0.5 * h));
+  const y1 = Math.min(imageHeight, Math.round(cpBox.y1 + 80 * k));
+  let n = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
+      const i = (y * imageWidth + x) * 4;
+      if (isSparklePixel(pixels[i], pixels[i + 1], pixels[i + 2])) n++;
+    }
+  }
+  return n;
 }
 
 // ---------- Text recognition (browser only) ----------
@@ -567,12 +618,34 @@ async function preparedImages(file) {
     const white = Math.min(r, gr, b) > 225 && Math.max(r, gr, b) - Math.min(r, gr, b) < 30;
     whiteText.data.set(white ? [0, 0, 0, 255] : [255, 255, 255, 255], i * 4);
   }
+  // Tag pills under the HP ("SHINY", your own tags) are white text on colour, in a narrow middle
+  // band; they read best at half size, as one block of text.
+  const tagTop = Math.round(canvas.height * 0.48);
+  const tagH = Math.round(canvas.height * 0.1);
+  const tagText = g.createImageData(canvas.width, tagH);
+  for (let i = 0; i < canvas.width * tagH; i++) {
+    const [r, gr, b] = img.data.subarray((tagTop * canvas.width + i) * 4, (tagTop * canvas.width + i) * 4 + 3);
+    const white = Math.min(r, gr, b) > 225 && Math.max(r, gr, b) - Math.min(r, gr, b) < 30;
+    tagText.data.set(white ? [0, 0, 0, 255] : [255, 255, 255, 255], i * 4);
+  }
+  canvas.height = tagH;
+  g.putImageData(tagText, 0, 0);
+  const tagHalf = Object.assign(document.createElement('canvas'), { width: Math.round(canvas.width / 2), height: Math.round(tagH / 2) });
+  tagHalf.getContext('2d').drawImage(canvas, 0, 0, tagHalf.width, tagHalf.height);
+  const tags = tagHalf.toDataURL('image/png');
   canvas.height = top;
   g.putImageData(whiteText, 0, 0);
   const cpFull = canvas.toDataURL('image/png');
   const half = Object.assign(document.createElement('canvas'), { width: Math.round(canvas.width / 2), height: Math.round(top / 2) });
   half.getContext('2d').drawImage(canvas, 0, 0, half.width, half.height);
-  return { width, darkText, band, others: [grey, inverted, labels, cpFull, half.toDataURL('image/png')] };
+  // The shiny sparkle test needs the screenshot's own colours (iPhones save in Display P3, which
+  // the browser would otherwise convert), from a copy at the same size.
+  const raw = await createImageBitmap(file, { colorSpaceConversion: 'none' });
+  const rawCanvas = Object.assign(document.createElement('canvas'), { width, height: img.height });
+  const rg = rawCanvas.getContext('2d', { willReadFrequently: true });
+  rg.drawImage(raw, 0, 0, width, img.height);
+  const pixels = rg.getImageData(0, 0, width, img.height).data;
+  return { width, height: img.height, pixels, darkText, band, tags, others: [grey, inverted, labels, cpFull, half.toDataURL('image/png')] };
 }
 
 // Reads one screenshot. A storage screenshot gives { kind: 'storage', tiles, width }; a Pokémon's
@@ -580,15 +653,24 @@ async function preparedImages(file) {
 // With `debug`, the raw text of every pass is included as `texts`.
 export async function readScreenshot(file, { debug = false } = {}) {
   const worker = await getWorker();
-  const { width, darkText, band, others } = await preparedImages(file);
+  const { width, height, pixels, darkText, band, tags, others } = await preparedImages(file);
   const { data } = await worker.recognize(darkText, {}, { blocks: true, text: true });
   const words = (data.blocks || []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words)))
     .map((w) => ({ text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 }));
-  if (isStorageGrid(words)) return { kind: 'storage', tiles: parseGrid(words, width), width };
+  if (isStorageGrid(words)) {
+    const tiles = parseGrid(words, width).map((t) => {
+      const sparkle = t.cpBox ? sparkleScore(pixels, width, height, t.cpBox) : 0;
+      return { ...t, shiny: sparkle >= SPARKLE_MIN_PIXELS, ...(debug ? { sparkle } : {}) };
+    });
+    return { kind: 'storage', tiles, width };
+  }
   const texts = [data.text];
   for (const image of others) texts.push((await worker.recognize(image)).data.text);
   const bandTexts = [];
   for (const image of band) bandTexts.push((await worker.recognize(image)).data.text);
+  await worker.setParameters({ tessedit_pageseg_mode: '6' }); // one block of text
+  texts.push((await worker.recognize(tags)).data.text);
+  await worker.setParameters({ tessedit_pageseg_mode: '3' }); // back to automatic
   return {
     kind: 'pokemon',
     parsed: parseScreen(texts.join('\n'), bandTexts.join('\n')),

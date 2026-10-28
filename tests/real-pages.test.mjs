@@ -53,3 +53,8 @@ test('a Shadow Machamp: exact level and IVs despite the Purify cost on screen', 
   assert.deepEqual(r.ivs, { atk: 15, def: 14, sta: 9 });
   assert.deepEqual([r.fast, ...r.charged], ['COUNTER_FAST', 'CLOSE_COMBAT']);
 });
+
+test('a "SHINY" tag on the page marks it shiny', () => {
+  assert.equal(results[1].shiny, true); // the Zacian is tagged SHINY
+  assert.equal(results[3].shiny, false);
+});
