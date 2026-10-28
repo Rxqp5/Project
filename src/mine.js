@@ -1,7 +1,7 @@
 // "My Pokémon" page: the player's own Pokémon, entered by hand and saved on this device.
 
 import { AVERAGE_IVS, estimateLevel, validEntries } from './collection.js';
-import { readScreenshot, mergeScreens, readPokemon, readGridTiles } from './scan.js';
+import { readScreenshot, mergeScreens, readPokemon, readGridTiles, solveLevelAndIvs, summarizeMatches } from './scan.js';
 import { bestMovesetsOverall } from './calc.js';
 
 const megaForms = (data, key) => Object.values(data.pokemon).filter((p) => p.base === key && p.mega && p.released);
@@ -139,6 +139,8 @@ export function renderMine(app, ctx) {
       fast: d.fast, charged: d.charged,
       shadow: Boolean(d.shadow), mega: Boolean(d.mega), dynamax: Boolean(d.dynamax || d.gmax), gmax: Boolean(d.gmax),
       movesUnknown: Boolean(d.movesUnknown),
+      // Not saved: what a screenshot showed besides the CP, to pin down the level once CP is typed.
+      hint: d.hint ? { ...d.hint, form: d.megaActive || d.key } : undefined,
     };
   }
 
@@ -325,10 +327,14 @@ export function renderMine(app, ctx) {
       const ivs = readIvs(f);
       // Keep a level that came from a screenshot (exact, or a Mega's CP) unless CP or IVs changed.
       const keepLevel = editing?.level && editing.key === key && editing.cp === cp && !ivs === !editing.ivs;
+      // A screenshot whose CP was hidden: with the typed CP, its HP and power-up cost give the exact level.
+      const hint = editing?.hint && editing.key === key ? editing.hint : null;
+      const solved = !keepLevel && hint && !ivs
+        ? summarizeMatches(solveLevelAndIvs(data, data.pokemon[hint.form] || data.pokemon[key], { ...hint, cp })) : null;
       const entry = {
         id: editingId || crypto.randomUUID(),
-        key, cp, ivs,
-        level: keepLevel ? editing.level : estimateLevel(data, data.pokemon[key], cp, ivs || AVERAGE_IVS),
+        key, cp, ivs: ivs || (solved?.exact ? solved.ivs : null),
+        level: keepLevel ? editing.level : solved?.level ?? estimateLevel(data, data.pokemon[key], cp, ivs || AVERAGE_IVS),
         movesUnknown: Boolean(editing?.movesUnknown) && !movesTouched,
         fast: f.fast.value,
         charged: [f.charged1.value, f.charged2.value].filter(Boolean),

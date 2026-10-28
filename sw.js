@@ -1,6 +1,6 @@
 // Offline support: always try the network first (so the raid rotation stays current) and fall
 // back to the last cached copy when offline.
-const CACHE = 'raid-guide-v5';
+const CACHE = 'raid-guide-v6';
 const SHELL = ['./', 'index.html', 'src/styles.css', 'src/app.js', 'src/calc.js', 'src/schedule.js', 'src/collection.js', 'src/mine.js', 'src/scan.js', 'src/advice.js', 'src/pokemon-pages.js', 'data/game.json', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
