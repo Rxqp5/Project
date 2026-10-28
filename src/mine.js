@@ -10,6 +10,7 @@ export function renderMine(app, ctx) {
   const { data, esc, sprite, typeBadges, moveBadge } = ctx;
   let editingId = null;
   let query = '';
+  let shinyOnly = false;
   // Pokémon read from screenshots, waiting to be checked and added. `prefill` is a draft loaded
   // into the form for fixing.
   let drafts = [];
@@ -38,7 +39,7 @@ export function renderMine(app, ctx) {
         next.push(e);
         added++;
       } else if (next[same].movesUnknown && !e.movesUnknown) {
-        next[same] = { ...e, id: next[same].id, mega: next[same].mega || e.mega };
+        next[same] = { ...e, id: next[same].id, mega: next[same].mega || e.mega, shiny: next[same].shiny || e.shiny };
         updated++;
       } else {
         skipped++;
@@ -75,6 +76,7 @@ export function renderMine(app, ctx) {
         <select name="charged2"><option value="">None</option>${moveOptions(charged, p.eliteCharged, entry.charged?.[1])}</select>
       </label>
       <fieldset class="checks">
+        ${check('shiny', 'Shiny ✨', true, entry.shiny)}
         ${check('shadow', 'Shadow', p.shadow, entry.shadow)}
         ${check('mega', 'I can Mega Evolve it', megaForms(data, key).length, entry.mega)}
         ${check('dynamax', 'Dynamax', p.dynamax, entry.dynamax)}
@@ -110,12 +112,12 @@ export function renderMine(app, ctx) {
 
   function entryCard(e) {
     const p = data.pokemon[e.key];
-    const tags = [e.shadow && 'Shadow', e.mega && 'Can Mega Evolve', e.gmax ? 'Gigantamax' : e.dynamax && 'Dynamax', e.ivs && `IVs ${e.ivs.atk}/${e.ivs.def}/${e.ivs.sta}`,
+    const tags = [e.shiny && 'Shiny ✨', e.shadow && 'Shadow', e.mega && 'Can Mega Evolve', e.gmax ? 'Gigantamax' : e.dynamax && 'Dynamax', e.ivs && `IVs ${e.ivs.atk}/${e.ivs.def}/${e.ivs.sta}`,
       e.movesUnknown && 'Moves not checked: best moves assumed']
       .filter(Boolean);
     return `
       <li class="mine-card">
-        <img src="${sprite(p.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+        <img src="${sprite(p.dex, e.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
         <div class="mine-body">
           <strong><a href="#/pokemon/${e.key}">${e.shadow ? 'Shadow ' : ''}${esc(p.name)}</a></strong> <span class="muted">CP ${e.cp} · Lv ${e.level}</span>
           <div>${typeBadges(p.types)}</div>
@@ -138,6 +140,7 @@ export function renderMine(app, ctx) {
       level: d.level ?? (d.key && d.cp ? estimateLevel(data, data.pokemon[d.key], d.cp, d.ivGuess || AVERAGE_IVS) : null),
       fast: d.fast, charged: d.charged,
       shadow: Boolean(d.shadow), mega: Boolean(d.mega), dynamax: Boolean(d.dynamax || d.gmax), gmax: Boolean(d.gmax),
+      shiny: Boolean(d.shiny),
       movesUnknown: Boolean(d.movesUnknown),
       // Not saved: what a screenshot showed besides the CP, to pin down the level once CP is typed.
       hint: d.hint ? { ...d.hint, form: d.megaActive || d.key } : undefined,
@@ -148,9 +151,9 @@ export function renderMine(app, ctx) {
     const p = d.key && data.pokemon[d.key];
     return `
       <li class="mine-card">
-        ${p ? `<img src="${sprite(p.dex)}" alt="" width="56" height="56" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">?</span>'}
+        ${p ? `<img src="${sprite(p.dex, d.shiny)}" alt="" width="56" height="56" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">?</span>'}
         <div class="mine-body">
-          <strong>${p ? `${d.shadow ? 'Shadow ' : ''}${esc(p.name)}` : 'Unknown Pokémon'}</strong>
+          <strong>${p ? `${d.shadow ? 'Shadow ' : ''}${esc(p.name)}` : 'Unknown Pokémon'}${d.shiny ? ' ✨' : ''}</strong>
           ${d.source === 'storage' && d.name && (!p || d.name !== p.name) ? `<span class="muted">Named "${esc(d.name)}"</span>` : ''}
           <span class="muted">${d.cp ? `CP ${d.cp}` : 'CP ?'}${d.level ? ` · Lv ${d.level}` : ''}${d.ivs ? ` · IVs ${d.ivs.atk}/${d.ivs.def}/${d.ivs.sta}` : ''}</span>
           ${p ? `<div class="moves">${d.fast ? moveBadge(d.fast) : ''}${d.charged.map((c) => moveBadge(c)).join('')}</div>` : ''}
@@ -210,7 +213,7 @@ export function renderMine(app, ctx) {
     const p = data.pokemon[e.key];
     return `
           <li class="mine-card">
-            <img src="${sprite(p.dex)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
+            <img src="${sprite(p.dex, e.shiny)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
             <div class="mine-body">
               <strong>${e.shadow ? 'Shadow ' : ''}${esc(p.name)}</strong> <span class="muted">CP ${e.cp}</span>
               <span class="hint">In your best team for ${bosses.length} raid${bosses.length > 1 ? 's' : ''}:
@@ -221,13 +224,18 @@ export function renderMine(app, ctx) {
       </section>`;
   }
 
+  // The player's list as shown: searched, optionally shinies only, by name then CP.
+  function visible(list) {
+    const q = query.trim().toLowerCase();
+    return list
+      .filter((e) => (!q || data.pokemon[e.key].name.toLowerCase().includes(q)) && (!shinyOnly || e.shiny))
+      .sort((a, b) => data.pokemon[a.key].name.localeCompare(data.pokemon[b.key].name) || b.cp - a.cp);
+  }
+
   function render() {
     const list = ctx.getCollection();
     const editing = list.find((e) => e.id === editingId) || prefill;
-    const q = query.trim().toLowerCase();
-    const shown = list
-      .filter((e) => !q || data.pokemon[e.key].name.toLowerCase().includes(q))
-      .sort((a, b) => data.pokemon[a.key].name.localeCompare(data.pokemon[b.key].name) || b.cp - a.cp);
+    const shinyCount = list.filter((e) => e.shiny).length;
     document.title = 'My Pokémon · Raid Boss Guide';
     app.innerHTML = `
       <section class="rotation-head">
@@ -280,7 +288,8 @@ export function renderMine(app, ctx) {
           <h2>Your Pokémon</h2>
           ${list.length > 8 ? `<input id="mine-search" type="search" placeholder="Search" value="${esc(query)}">` : ''}
         </div>
-        ${list.length ? `<ul class="mine-list">${shown.map(entryCard).join('')}</ul>`
+        ${shinyCount ? `<label class="check"><input type="checkbox" id="shiny-only" ${shinyOnly ? 'checked' : ''}> ✨ Shiny only (${shinyCount})</label>` : ''}
+        ${list.length ? `<ul class="mine-list" id="my-list">${visible(list).map(entryCard).join('')}</ul>`
     : '<p class="hint">Nothing here yet. Add your strongest raid Pokémon above, e.g. your best Fire, Water, Dragon and Dark types.</p>'}
       </section>
 
@@ -366,6 +375,7 @@ export function renderMine(app, ctx) {
         fast: f.fast.value,
         charged: [f.charged1.value, f.charged2.value].filter(Boolean),
         shadow: Boolean(f.shadow?.checked),
+        shiny: Boolean(f.shiny?.checked),
         mega: Boolean(f.mega?.checked),
         dynamax: Boolean(f.dynamax?.checked || f.gmax?.checked),
         gmax: Boolean(f.gmax?.checked),
@@ -384,12 +394,13 @@ export function renderMine(app, ctx) {
 
     app.querySelector('#mine-search')?.addEventListener('input', (e) => {
       query = e.target.value;
-      app.querySelector('.mine-list').innerHTML = list
-        .filter((x) => data.pokemon[x.key].name.toLowerCase().includes(query.trim().toLowerCase()))
-        .sort((a, b) => data.pokemon[a.key].name.localeCompare(data.pokemon[b.key].name) || b.cp - a.cp)
-        .map(entryCard).join('');
+      app.querySelector('#my-list').innerHTML = visible(list).map(entryCard).join('');
     });
-    app.querySelector('.mine-list')?.addEventListener('click', (e) => {
+    app.querySelector('#shiny-only')?.addEventListener('change', (e) => {
+      shinyOnly = e.target.checked;
+      app.querySelector('#my-list').innerHTML = visible(list).map(entryCard).join('');
+    });
+    app.querySelector('#my-list')?.addEventListener('click', (e) => {
       const { edit, delete: del } = e.target.dataset;
       if (edit) {
         editingId = edit;

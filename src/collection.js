@@ -3,7 +3,7 @@
 //
 // A collection entry looks like:
 //   { id, key, cp, level, ivs: { atk, def, sta } | null, fast, charged: [id, id?],
-//     shadow, mega, dynamax, gmax, movesUnknown }
+//     shadow, mega, dynamax, gmax, shiny, movesUnknown }
 // `mega` means the player can Mega Evolve it; `dynamax`/`gmax` that it can join Max Battles.
 // `movesUnknown` marks a storage import, given its best moves until its own page is scanned.
 
@@ -91,6 +91,7 @@ export function rankOwned(data, bossKey, tier, collection, { weather, bossMoves 
       results.push({
         entryId: entry.id, key, dex: p.dex, types: p.types, mega: p.mega, legendary: Boolean(p.legendary),
         movesUnknown: Boolean(entry.movesUnknown),
+        shiny: Boolean(entry.shiny),
         shadow: Boolean(entry.shadow), level: entry.level, cp: entry.cp,
         name: ownedName(entry, p),
         fast: entry.fast, ...best,
@@ -158,7 +159,7 @@ export function rankOwnedMax(data, bossKey, tier, collection, { weather, bossMov
     if (!p) continue;
     const stats = ownedStats(data, entry, p);
     const name = ownedName(entry, p);
-    const common = { entryId: entry.id, key, dex: p.dex, types: p.types, name, level: entry.level, cp: entry.cp };
+    const common = { entryId: entry.id, key, dex: p.dex, types: p.types, name, level: entry.level, cp: entry.cp, shiny: Boolean(entry.shiny) };
     const best = bestMaxMove(p, stats, [entry.fast], boss, data, weather);
     if (best) attackers.push({ ...common, gmax: Boolean(p.gmax), ...best });
     const incoming = averageBossDps(bossPokemon, boss, stats, data, weather, bossMoves);

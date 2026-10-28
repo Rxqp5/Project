@@ -36,7 +36,7 @@ function adviceCard(ctx, a, { link = true } = {}) {
   const name = `${e.shadow ? 'Shadow ' : ''}${p.name}`;
   return `
     <li class="mine-card advice">
-      <img src="${sprite(p.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+      <img src="${sprite(p.dex, a.entry.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
       <div class="mine-body">
         <span><span class="status ${VERDICT_CLASS[a.verdict]}">${a.label}</span></span>
         <strong>${link ? `<a href="#/pokemon/${e.key}">${esc(name)}</a>` : esc(name)}</strong>
@@ -127,7 +127,7 @@ export function renderPokemon(app, ctx, key) {
     id: 'scan', key, cp: scan.cp, ivs: scan.ivs,
     level: scan.level ?? estimateLevel(data, p, scan.cp, scan.ivGuess || AVERAGE_IVS),
     fast: scan.fast || p.fast[0], charged: scan.charged.length ? scan.charged : [p.charged[0]],
-    shadow: Boolean(scan.shadow), dynamax: Boolean(scan.dynamax || scan.gmax), gmax: Boolean(scan.gmax),
+    shadow: Boolean(scan.shadow), dynamax: Boolean(scan.dynamax || scan.gmax), gmax: Boolean(scan.gmax), shiny: Boolean(scan.shiny),
   } : null;
 
   app.innerHTML = `

@@ -84,7 +84,7 @@ function saveSettings() {
 }
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const sprite = (dex) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${dex}.png`;
+const sprite = (dex, shiny = false) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${shiny ? 'shiny/' : ''}${dex}.png`;
 const typeBadge = (t) => `<span class="type type-${t.toLowerCase()}">${t}</span>`;
 const typeBadges = (types) => types.map(typeBadge).join('');
 const moveName = (id) => data.moves[id].name;
@@ -337,7 +337,7 @@ function openShare(tier, key, battle) {
   const mv = (id) => ({ name: data.moves[id].name, type: data.moves[id].type });
   const member = (c) => {
     const owned = c.entryId !== undefined;
-    const base = { dex: c.dex, name: c.name };
+    const base = { dex: c.dex, name: c.name, shiny: owned && c.shiny };
     if (c.role === 'Tank') return { ...base, detail: `Tank · survives ~${Math.round(c.survival)}s${owned ? ` · CP ${c.cp}` : ''}`, moves: [] };
     const moves = c.role
       ? [mv(c.fast), { name: `${c.gmaxMove ? 'G-Max' : 'Max'} ${c.maxType} move`, type: c.maxType }]
@@ -486,7 +486,7 @@ function maxSections(key, tier, bossMoves) {
 function maxTeamCard(c, maxMove, owned = false) {
   return `
     <li>
-      <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+      <img src="${sprite(c.dex, owned && c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
       <span class="status">${c.role}</span>
       <strong>${esc(c.name)}</strong>
       ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}</span>` : ''}
@@ -554,8 +554,8 @@ function partyBlock(title, party, tier, shields, blurb, { owned = false } = {}) 
       <ol class="party-list">
         ${party.map((c) => `
           <li>
-            <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
-            <strong>${esc(c.name)}</strong>
+            <img src="${sprite(c.dex, owned && c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+            <strong>${esc(c.name)}${owned && c.shiny ? ' ✨' : ''}</strong>
             ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}${c.movesUnknown ? ' · moves not checked' : ''}</span>` : ''}
             <span>${moveBadge(c.fast, data.pokemon[c.key].eliteFast.includes(c.fast))}</span>
             <span>${moveBadge(c.charged, data.pokemon[c.key].eliteCharged.includes(c.charged))}</span>
