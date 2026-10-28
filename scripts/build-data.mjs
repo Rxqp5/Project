@@ -217,6 +217,28 @@ for (const p of Object.values(pokemon)) {
   if (!p.mega && perDex[p.dex] === 1) p.name = baseNames[p.dex] || p.name.replace(/ \(.*\)$/, '');
 }
 
+// Megas and forms were copied from their base entry; give each its own move lists before adding to them.
+for (const p of Object.values(pokemon)) {
+  for (const f of ['fast', 'charged', 'eliteFast', 'eliteCharged']) p[f] = [...p[f]];
+}
+
+// Movepools: the game master can lag behind new moves (e.g. Zacian's Behemoth Blade), so add any
+// moves Pokebattler lists for the same Pokémon. Its ids add "_FORM" to forms.
+for (const pb of pbPokemon.pokemon) {
+  const key = pb.pokemonId.replace(/_FORM$/, '').replace(/_NORMAL$/, '');
+  const p = pokemon[key];
+  if (!p || /_SHADOW$|_PURIFIED$/.test(key)) continue;
+  const add = (field, ids) => {
+    for (const id of moveList(ids || [])) if (!p[field].includes(id)) p[field].push(id);
+  };
+  const eliteFast = moveList(pb.eliteQuickMove || []);
+  const eliteCharged = moveList(pb.eliteCharged || pb.eliteCinematicMove || []);
+  add('eliteFast', eliteFast);
+  add('eliteCharged', eliteCharged);
+  add('fast', (pb.quickMoves || []).filter((m) => !eliteFast.includes(moveId(m)) && !p.eliteFast.includes(moveId(m))));
+  add('charged', (pb.cinematicMoves || []).filter((m) => !eliteCharged.includes(moveId(m)) && !p.eliteCharged.includes(moveId(m))));
+}
+
 // The game master can lag behind new Megas; fill the gaps from Pokebattler's Pokémon data.
 const knownStats = new Set(Object.values(pokemon).map((p) => statKey(p.dex, p.atk, p.def, p.sta)));
 for (const pb of pbPokemon.pokemon) {

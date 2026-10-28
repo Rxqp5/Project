@@ -166,7 +166,8 @@ export function loadCollection(storage) {
 
 export function saveCollection(storage, list) {
   try {
-    storage.setItem(STORAGE_KEY, JSON.stringify(list));
+    // `hint` is screenshot data only needed while a Pokémon is being checked.
+    storage.setItem(STORAGE_KEY, JSON.stringify(list.map(({ hint, ...e }) => e)));
     return true;
   } catch {
     return false;

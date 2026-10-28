@@ -49,29 +49,42 @@ const toNumber = (s) => Number(String(s).replace(/[^0-9]/g, ''));
 
 // ---------- Parsing the text of one screenshot ----------
 
-export function parseScreen(text) {
-  const raw = text.replace(/\r/g, '');
+const TYPE_WORDS = new Set(['NORMAL', 'FIGHTING', 'FLYING', 'POISON', 'GROUND', 'ROCK', 'BUG', 'GHOST', 'STEEL',
+  'FIRE', 'WATER', 'GRASS', 'ELECTRIC', 'PSYCHIC', 'ICE', 'DRAGON', 'DARK', 'FAIRY']);
+// A line that's only type names ("PSYCHIC", "FAIRY STEEL") is the type label, not a move.
+const isTypeLine = (line) => line.split(' ').every((w) => TYPE_WORDS.has(w));
+
+// `bandText` is the text read from the cropped CP area at the top (just the CP digits).
+export function parseScreen(text, bandText = '') {
+  const raw = text.replace(/\r/g, '').replace(/\+/g, ' PLUS ');
   const lines = raw.split('\n').map(clean).filter(Boolean);
   const flat = lines.join(' ');
 
   // "CP 3200" / "CP3,200". The small raised "CP" is often read as "cp", "cr" or "cf", and the big
-  // thin digits are easy to misread, so every reading is kept and checked against HP and stardust
-  // later (see pickCp).
-  const cpReadings = [...new Set([...raw.matchAll(/\bC\s?[PFRO]\s*(\d[\d,.]{1,6})/gi)]
-    .map((m) => String(toNumber(m[1]))).filter((r) => r.length >= 2 && r.length <= 5))];
+  // thin digits are easy to misread or partly hidden, so every reading is kept and checked against
+  // HP and stardust later (see pickCp).
+  const readings = [...raw.matchAll(/\bC\s?[PFRO]\s*[’']?\s*(\d[\d,.]{1,6})/gi), ...raw.matchAll(/\bP(\d{3,4})\b/g)]
+    .map((m) => String(toNumber(m[1])));
+  for (const m of bandText.matchAll(/\d[\d,.]{1,6}/g)) readings.push(String(toNumber(m[0])));
+  const cpReadings = [...new Set(readings.filter((r) => r.length >= 2 && r.length <= 5))];
   const cp = cpReadings.length ? Number(cpReadings[0]) : null;
 
   // "152 / 152 HP"
   const hpMatch = /(\d{1,3})\s*\/\s*(\d{1,3})\s*HP/i.exec(raw);
   const hp = hpMatch ? Number(hpMatch[2]) : null;
 
-  // "POWER UP  9,000  12": stardust then candy.
-  const dustMatch = /POWER\s*UP\D{0,12}?(\d{1,2}[,.]?\d{3}|\d{3})\D{1,12}?(\d{1,2})\b/i.exec(raw.replace(/\n/g, ' '));
-  const stardust = dustMatch ? toNumber(dustMatch[1]) : null;
+  // Power-up cost: "POWER UP 9,000 12". The button's white label often isn't read, so every
+  // "stardust candy" pair of numbers is kept; the level solver uses the ones that fit the cost table
+  // (the Purify cost of a Shadow Pokémon looks the same, and is ruled out by the CP and HP).
+  const labelled = /POWER\s*UP\D{0,12}?(\d{1,2}[,.]?\d{3}|\d{3})\D{1,12}?(\d{1,2})\b/i.exec(raw.replace(/\n/g, ' '));
+  const powerUps = [...raw.matchAll(/(?:^|[^\d,.])(\d{1,2}[,.]\d{3}|\d{3})[^\S\n]*[^\d\n]{0,4}?[^\S\n](\d{1,2})(?![\d,.])/gm)]
+    .map((m) => ({ stardust: toNumber(m[1]), candy: Number(m[2]) }));
+  const stardust = labelled ? toNumber(labelled[1]) : null;
 
   // "LARVITAR CANDY" (but not "XL CANDY")
-  const candyMatch = /([A-Z][A-Z' .-]{2,}?)\s+CANDY\b/.exec(flat.replace(/\bXL\s+CANDY\b/g, ''));
+  const candyMatch = /([A-Z][A-Z' .-]{2,}?)\s+CANDY\b/.exec(flat.replace(/\b(XL|BONUS|RARE)\s+CANDY\b/g, ''));
   const family = candyMatch ? candyMatch[1].trim().split(' ').pop() : null;
+  const types = [...new Set(lines.filter(isTypeLine).flatMap((l) => l.split(' ')))];
 
   return {
     lines,
@@ -79,9 +92,14 @@ export function parseScreen(text) {
     cp: cp && cp >= 10 && cp <= 10000 ? cp : null,
     hp: hp && hp >= 10 ? hp : null,
     stardust,
+    powerUps,
     family,
-    shadow: /\bPURIFY\b/.test(flat),
+    types,
+    shadow: /\bPURIFY\b|\bSHADOW BONUS\b/.test(flat),
     lucky: /\bLUCKY\b/.test(flat),
+    // A Mega Evolution that's active shows a countdown ("07:36 left").
+    megaActive: /\b\d{1,2} ?[:.]? ?\d{2} LEFT\b/.test(flat),
+    canMega: /\bMEGA EVOLVE\b/.test(flat),
     dynamax: /\bMAX (MOVES|ATTACK|GUARD|SPIRIT)\b|\bDYNAMAX\b/.test(flat),
     gmax: /\bG ?MAX\b|\bGIGANTAMAX\b/.test(flat),
   };
@@ -100,23 +118,48 @@ export function powerUpDust(data, level, { shadow = false, purified = false, luc
   return Math.round(base * m);
 }
 
+// Candy (or, from level 40, XL Candy) to power up once from `level`.
+export function powerUpCandy(data, level, { shadow = false, purified = false } = {}) {
+  const pu = data.powerUp;
+  const base = level < pu.xlFromLevel ? pu.candy[Math.floor(level) - 1] : pu.xlCandy[Math.floor(level) - pu.xlFromLevel];
+  if (!base) return null;
+  return Math.ceil(base * (shadow ? pu.shadow : purified ? pu.purified : 1) - 1e-9);
+}
+
 export const hpAt = (p, cpm, sta) => Math.max(10, Math.floor((p.sta + sta) * cpm));
 
-// Every (level, IVs) that gives exactly this CP, HP and stardust cost. Purified Pokémon have
-// cheaper power-ups and nothing on screen to say so, so both costs are accepted.
-export function solveLevelAndIvs(data, p, { cp, hp, stardust, shadow, lucky }) {
+// Whether the power-up cost(s) read from the screen fit this level. Purified Pokémon have cheaper
+// power-ups and nothing on screen to say so, so both are accepted. No cost read: any level.
+function levelFits(data, level, { stardust, powerUps, shadow, lucky }) {
+  const costs = powerUps?.length ? powerUps : stardust ? [{ stardust, candy: null }] : null;
+  if (!costs) return true;
+  return [{ shadow }, { purified: true }].some((kind) => {
+    const dust = powerUpDust(data, level, { ...kind, lucky });
+    const candy = powerUpCandy(data, level, kind);
+    return costs.some((c) => c.stardust === dust && (c.candy === null || c.candy === candy));
+  });
+}
+
+// Every (level, IVs) that gives this CP (if known), HP and power-up cost. A misread cost would
+// rule everything out, so if nothing fits it tries again ignoring the candy, then the cost.
+export function solveLevelAndIvs(data, p, parsed) {
+  const strict = solveWith(data, p, parsed);
+  if (strict.length || !(parsed.powerUps?.length || parsed.stardust)) return strict;
+  const dustOnly = solveWith(data, p, { ...parsed, powerUps: parsed.powerUps?.map((c) => ({ ...c, candy: null })) });
+  return dustOnly.length ? dustOnly : solveWith(data, p, { ...parsed, powerUps: null, stardust: null });
+}
+
+function solveWith(data, p, parsed) {
+  const { cp, hp } = parsed;
   const matches = [];
   for (let level = 1; level <= MAX_LEVEL; level += 0.5) {
-    if (stardust) {
-      const costs = [powerUpDust(data, level, { shadow, lucky }), powerUpDust(data, level, { purified: true, lucky })];
-      if (!costs.includes(stardust)) continue;
-    }
+    if (!levelFits(data, level, parsed)) continue;
     const m = cpmAt(data, level);
     for (let sta = 0; sta <= 15; sta++) {
       if (hp && hpAt(p, m, sta) !== hp) continue;
       for (let atk = 0; atk <= 15; atk++) {
         for (let def = 0; def <= 15; def++) {
-          if (cpAt(p, m, { atk, def, sta }) === cp) matches.push({ level, atk, def, sta });
+          if (!cp || cpAt(p, m, { atk, def, sta }) === cp) matches.push({ level, atk, def, sta });
         }
       }
     }
@@ -125,27 +168,14 @@ export function solveLevelAndIvs(data, p, { cp, hp, stardust, shadow, lucky }) {
 }
 
 // Every CP this Pokémon can have with this HP and power-up cost.
-export function possibleCps(data, p, { hp, stardust, shadow, lucky }) {
-  const cps = new Set();
-  for (let level = 1; level <= MAX_LEVEL; level += 0.5) {
-    if (stardust) {
-      const costs = [powerUpDust(data, level, { shadow, lucky }), powerUpDust(data, level, { purified: true, lucky })];
-      if (!costs.includes(stardust)) continue;
-    }
-    const m = cpmAt(data, level);
-    for (let sta = 0; sta <= 15; sta++) {
-      if (hp && hpAt(p, m, sta) !== hp) continue;
-      for (let atk = 0; atk <= 15; atk++) {
-        for (let def = 0; def <= 15; def++) cps.add(cpAt(p, m, { atk, def, sta }));
-      }
-    }
-  }
-  return cps;
+export function possibleCps(data, p, parsed) {
+  return new Set(solveLevelAndIvs(data, p, { ...parsed, cp: null })
+    .map(({ level, ...ivs }) => cpAt(p, cpmAt(data, level), ivs)));
 }
 
 // The possible CP that best agrees with what was read. The CP is read several times, so each
-// possible CP gets a vote from every reading: 2 for an exact match, 1 for one wrong digit.
-// `distance` is how far the best-agreeing reading was from it.
+// possible CP gets a vote from every reading: 2 for an exact match, 1 for one wrong, missing
+// or extra digit (a sword or a sparkle over a digit). `distance` is the closest reading's distance.
 export function pickCp(readings, possible) {
   let best = null;
   for (const c of possible) {
@@ -156,7 +186,7 @@ export function pickCp(readings, possible) {
       const d = levenshtein(r, cs);
       distance = Math.min(distance, d);
       if (d === 0) votes += 2;
-      else if (d === 1 && r.length === cs.length) votes += 1;
+      else if (d === 1 && r.length >= 3) votes += 1;
     }
     if (votes && (!best || votes > best.votes || (votes === best.votes && distance < best.distance))) {
       best = { cp: c, votes, distance };
@@ -186,42 +216,82 @@ export function summarizeMatches(matches) {
 // ---------- Which Pokémon, which moves ----------
 
 const MOVE_THRESHOLD = 0.8;
+// Internal variants ("Behemoth Blade2", "Future Sight Plus 2") and Max Moves never show as moves.
+const listedMove = (m, id) => !/\d/.test(m.name) && !id.startsWith('MAX_');
 
-function movesOnScreen(parsed, p, data) {
-  const score = (ids) => ids
-    .map((id) => ({ id, s: bestLineMatch(parsed.lines, clean(data.moves[id].name)) }))
-    .filter((m) => m.s >= MOVE_THRESHOLD)
-    .sort((a, b) => b.s - a.s);
-  return { fast: score([...p.fast, ...p.eliteFast]), charged: score([...p.charged, ...p.eliteCharged]) };
+// Every move whose name appears on the screen (ignoring the type label), best match first.
+export function movesOnScreen(parsed, data) {
+  const lines = parsed.lines.filter((l) => !isTypeLine(l));
+  const found = new Map();
+  for (const [id, m] of Object.entries(data.moves)) {
+    if (!listedMove(m, id)) continue;
+    const name = clean(m.name.replace(/\+/g, ' PLUS '));
+    // "Psychic" is also a type: only count it when its power follows ("PSYCHIC 90").
+    if (TYPE_WORDS.has(name) && !lines.some((l) => new RegExp(`\\b${name} \\d`).test(l))) continue;
+    const s = bestLineMatch(lines, name);
+    if (s >= MOVE_THRESHOLD) found.set(id, s);
+  }
+  return found;
 }
 
+// A species' moves, including the extra ones its Megas get (Future Sight+ for Mega Mewtwo Y).
+function movePool(data, key) {
+  const pool = (p) => [...p.fast, ...p.eliteFast, ...p.charged, ...p.eliteCharged];
+  const ids = new Set(pool(data.pokemon[key]));
+  for (const m of Object.values(data.pokemon)) if (m.base === key && m.mega) pool(m).forEach((id) => ids.add(id));
+  return ids;
+}
+
+function pickMoves(found, pool, data) {
+  const ranked = [...found.entries()].filter(([id]) => pool.has(id))
+    // On a tie, the longer name wins ("Future Sight+" over "Future Sight").
+    .sort((a, b) => b[1] - a[1] || data.moves[b[0]].name.length - data.moves[a[0]].name.length)
+    .map(([id]) => id);
+  return {
+    fast: ranked.filter((id) => data.moves[id].kind === 'fast'),
+    charged: ranked.filter((id) => data.moves[id].kind === 'charged'),
+  };
+}
+
+const sameTypes = (a, b) => a.length === b.length && a.every((t) => b.includes(t.toUpperCase()));
+
 // Picks the species (and form) that best fits the screenshot: its name, its candy family, the
-// moves on screen, and whether its stats can produce that CP and HP at all.
+// moves on screen, its types, and whether its stats can produce that CP and HP at all. A Mega
+// Evolution that's active is checked against its Mega forms. A nickname with no candy shown is
+// identified from its moves alone.
 export function identify(parsed, data) {
-  const results = [];
+  const found = movesOnScreen(parsed, data);
   const family = parsed.family && clean(parsed.family);
+  const results = [];
   for (const [key, p] of Object.entries(data.pokemon)) {
     if (!p.released || p.mega || p.gmax || !p.fast.length) continue;
     const name = clean(p.name.replace(/\s*\(.*\)$/, ''));
     const nameScore = bestLineMatch(parsed.lines, name);
     const familyMatch = family && p.family && similarity(family, clean(p.family)) >= 0.8;
-    if (nameScore < 0.8 && !familyMatch) continue;
-    const moves = movesOnScreen(parsed, p, data);
-    let score = (nameScore >= 0.8 ? 4 + nameScore : 0) + (familyMatch ? 3 : 0)
-      + (moves.fast.length ? 2 : 0) + Math.min(2, moves.charged.length) * 2;
-    // Regional forms: prefer the form whose types/moves fit; a plain name match favours the base form.
-    if (/\(/.test(p.name) && !moves.fast.length && !moves.charged.length) score -= 1;
-    // The CP must be one this Pokémon can have with the HP and power-up cost shown.
-    let cp = null;
-    if (parsed.cpReadings?.length && (parsed.hp || parsed.stardust)) {
-      const pick = pickCp(parsed.cpReadings, possibleCps(data, p, parsed));
-      cp = pick?.cp ?? null;
-      score += pick ? Math.min(3, pick.votes) : -6;
-    } else if (parsed.cp) {
-      score += solveLevelAndIvs(data, p, { cp: parsed.cp }).length ? 2 : -6;
-      cp = parsed.cp;
+    const moves = pickMoves(found, movePool(data, key), data);
+    const byMoves = moves.fast.length && moves.charged.length && moves.fast.length + moves.charged.length >= 3;
+    if (nameScore < 0.8 && !familyMatch && !byMoves) continue;
+    const forms = [key, ...(parsed.megaActive
+      ? Object.keys(data.pokemon).filter((k) => data.pokemon[k].base === key && data.pokemon[k].mega) : [])];
+    let best = null;
+    for (const form of forms) {
+      const f = data.pokemon[form];
+      let score = (nameScore >= 0.8 ? 4 + nameScore : 0) + (familyMatch ? 3 : 0)
+        + (moves.fast.length ? 2 : 0) + Math.min(3, moves.charged.length) * 2;
+      if (/\(/.test(f.name) && !moves.fast.length && !moves.charged.length) score -= 1;
+      if (parsed.types?.length) score += sameTypes(f.types, parsed.types) ? 2 : -2;
+      // The CP must be one this form can have with the HP and power-up cost shown.
+      let cp = null;
+      if (parsed.cpReadings?.length && (parsed.hp || parsed.powerUps?.length || parsed.stardust)) {
+        const pick = pickCp(parsed.cpReadings, possibleCps(data, f, parsed));
+        cp = pick?.cp ?? null;
+        score += pick ? Math.min(3, pick.votes) : -4;
+      } else if (parsed.hp) {
+        score += solveLevelAndIvs(data, f, { ...parsed, cp: null }).length ? 1 : -6;
+      }
+      if (!best || score > best.score) best = { key, form, score, moves, cp };
     }
-    results.push({ key, score, moves, cp });
+    results.push(best);
   }
   results.sort((a, b) => b.score - a.score);
   return results[0] && results[0].score > 2 ? results[0] : null;
@@ -232,17 +302,18 @@ export function readPokemon(parsed, data) {
   const id = identify(parsed, data);
   if (!id) return { parsed, key: null, problems: ["Couldn't tell which Pokémon this is."] };
   const p = data.pokemon[id.key];
+  const form = data.pokemon[id.form];
   const problems = [];
-  const fast = id.moves.fast[0]?.id || null;
-  const charged = id.moves.charged.slice(0, 2).map((m) => m.id);
+  const fast = id.moves.fast[0] || null;
+  const charged = id.moves.charged.slice(0, 3);
   if (!fast) problems.push('Fast move not found; pick it below.');
   if (!charged.length) problems.push('Charged move not found; pick it below.');
   const cp = id.cp;
-  if (!cp) problems.push('CP not found; enter it below.');
-  else if (!parsed.stardust) problems.push('Power-up cost not found, so the level is an estimate.');
-  const solved = cp
-    ? summarizeMatches(solveLevelAndIvs(data, p, { ...parsed, cp })) || summarizeMatches(solveLevelAndIvs(data, p, { cp }))
-    : null;
+  const hasCost = parsed.powerUps?.length || parsed.stardust;
+  const solved = summarizeMatches(solveLevelAndIvs(data, form, { ...parsed, cp }))
+    || (cp ? summarizeMatches(solveLevelAndIvs(data, form, { cp })) : null);
+  if (!cp) problems.push("CP couldn't be read (is something covering it?); enter it below.");
+  else if (!hasCost && !solved?.exact) problems.push('Power-up cost not found, so the level is an estimate.');
   return {
     parsed,
     key: id.key,
@@ -251,27 +322,33 @@ export function readPokemon(parsed, data) {
     fast,
     charged,
     shadow: parsed.shadow && p.shadow,
+    mega: id.form !== id.key || Boolean(parsed.canMega),
+    megaActive: id.form !== id.key ? id.form : null,
+    // Kept so the level and IVs can be worked out exactly once the player types a hidden CP.
+    hint: { hp: parsed.hp, powerUps: parsed.powerUps, stardust: parsed.stardust, shadow: parsed.shadow, lucky: parsed.lucky },
     dynamax: parsed.dynamax && Boolean(p.dynamax),
     gmax: parsed.gmax && Boolean(data.pokemon[`${id.key}_GIGANTAMAX`]),
     level: solved?.level ?? null,
-    ivs: solved?.exact ? solved.ivs : null,
+    ivs: cp && solved?.exact ? solved.ivs : null,
     ivGuess: solved?.ivs ?? null,
     levelRange: solved?.levels,
     problems,
   };
 }
 
-// Moves often sit below the fold, so one Pokémon can take two screenshots: one with the CP and
-// one with the moves. A screenshot with no CP is merged into the previous one.
+// Moves sit below the fold, so one Pokémon usually takes two screenshots: the top (with its HP)
+// and the moves. A screenshot without an HP line is the lower half of the one before it.
 export function mergeScreens(parsedList) {
   const merged = [];
   for (const s of parsedList) {
     const prev = merged[merged.length - 1];
-    if (prev && !s.cp && (!s.hp || s.hp === prev.hp)) {
+    if (prev && !s.hp) {
       prev.lines = [...prev.lines, ...s.lines];
       prev.cpReadings = [...prev.cpReadings, ...s.cpReadings];
+      prev.powerUps = [...(prev.powerUps || []), ...(s.powerUps || [])];
+      prev.types = [...new Set([...(prev.types || []), ...(s.types || [])])];
       for (const k of ['family', 'stardust']) prev[k] = prev[k] || s[k];
-      for (const k of ['shadow', 'lucky', 'dynamax', 'gmax']) prev[k] = prev[k] || s[k];
+      for (const k of ['shadow', 'lucky', 'dynamax', 'gmax', 'megaActive', 'canMega']) prev[k] = prev[k] || s[k];
     } else {
       merged.push({ ...s });
     }
@@ -460,6 +537,27 @@ async function preparedImages(file) {
   });
   const grey = mono(contrast);
   const inverted = mono((r, gr, b) => 255 - contrast(r, gr, b));
+  // Light grey labels ("MACHOP CANDY", "FAIRY / STEEL") vanish in the high-contrast pass.
+  const labels = mono((r, gr, b) => (lum(r, gr, b) < 215 && Math.max(r, gr, b) - Math.min(r, gr, b) < 45 ? 0 : 255));
+  // The CP itself: a strip across the top, keeping white (normal) and pink (Mega Evolved) text,
+  // at full and half size. Real screenshots read best at half size.
+  const band = [1, 0.5].map((bandScale) => {
+    const y0 = Math.round(canvas.height * 0.035);
+    const h = Math.round(canvas.height * 0.06);
+    const x0 = Math.round(canvas.width * 0.2);
+    const w = Math.round(canvas.width * 0.6);
+    const c = Object.assign(document.createElement('canvas'), { width: Math.round(w * bandScale), height: Math.round(h * bandScale) });
+    const bg = c.getContext('2d', { willReadFrequently: true });
+    bg.drawImage(bitmap, x0 / scale, y0 / scale, w / scale, h / scale, 0, 0, c.width, c.height);
+    const d = bg.getImageData(0, 0, c.width, c.height);
+    for (let i = 0; i < d.data.length; i += 4) {
+      const [r, gr, b] = d.data.subarray(i, i + 3);
+      const keep = Math.min(r, gr, b) > 220 || (r > 200 && b > 110 && gr < 170 && r - gr > 60);
+      d.data.set(keep ? [0, 0, 0] : [255, 255, 255], i);
+    }
+    bg.putImageData(d, 0, 0);
+    return c.toDataURL('image/png');
+  });
   const width = canvas.width;
   // White text in the top quarter only (the white card further down would turn into a black block).
   const top = Math.round(canvas.height * 0.25);
@@ -474,19 +572,26 @@ async function preparedImages(file) {
   const cpFull = canvas.toDataURL('image/png');
   const half = Object.assign(document.createElement('canvas'), { width: Math.round(canvas.width / 2), height: Math.round(top / 2) });
   half.getContext('2d').drawImage(canvas, 0, 0, half.width, half.height);
-  return { width, darkText, others: [grey, inverted, cpFull, half.toDataURL('image/png')] };
+  return { width, darkText, band, others: [grey, inverted, labels, cpFull, half.toDataURL('image/png')] };
 }
 
 // Reads one screenshot. A storage screenshot gives { kind: 'storage', tiles, width }; a Pokémon's
 // own page gives { kind: 'pokemon', parsed }.
-export async function readScreenshot(file) {
+// With `debug`, the raw text of every pass is included as `texts`.
+export async function readScreenshot(file, { debug = false } = {}) {
   const worker = await getWorker();
-  const { width, darkText, others } = await preparedImages(file);
+  const { width, darkText, band, others } = await preparedImages(file);
   const { data } = await worker.recognize(darkText, {}, { blocks: true, text: true });
   const words = (data.blocks || []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words)))
     .map((w) => ({ text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 }));
   if (isStorageGrid(words)) return { kind: 'storage', tiles: parseGrid(words, width), width };
   const texts = [data.text];
   for (const image of others) texts.push((await worker.recognize(image)).data.text);
-  return { kind: 'pokemon', parsed: parseScreen(texts.join('\n')) };
+  const bandTexts = [];
+  for (const image of band) bandTexts.push((await worker.recognize(image)).data.text);
+  return {
+    kind: 'pokemon',
+    parsed: parseScreen(texts.join('\n'), bandTexts.join('\n')),
+    ...(debug ? { texts, bandTexts } : {}),
+  };
 }
