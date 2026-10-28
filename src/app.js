@@ -1,15 +1,22 @@
 import {
-  TIERS, matchups, boostedWeather, bossStats, catchCP, rankCounters, pickParty, budgetFilter,
-  trainersNeeded, bestMovesetsOverall,
+  TIERS, SHIELD_ATK, SHIELD_DEF, matchups, boostedWeather, bossStats, catchCP, rankCounters, pickParty,
+  budgetFilter, canBreakShields, trainersNeeded, bestMovesetsOverall,
 } from './calc.js';
 
 const app = document.getElementById('app');
-const TIER_ORDER = ['1', '2', '3', '4', '5', 'mega', 'mega_legendary', 'primal'];
-const TIER_SHORT = { 1: '1★', 2: '2★', 3: '3★', 4: '4★', 5: '5★', mega: 'Mega', mega_legendary: 'Mega Legendary', primal: 'Primal' };
+const TIER_ORDER = ['1', '2', '3', '4', '5', 'elite', 'shadow_1', 'shadow_3', 'shadow_5',
+  'mega', 'mega_legendary', 'primal', 'super_mega_4', 'super_mega_5'];
+const TIER_SHORT = {
+  1: '1★', 2: '2★', 3: '3★', 4: '4★', 5: '5★', elite: 'Elite',
+  shadow_1: 'Shadow 1★', shadow_3: 'Shadow 3★', shadow_5: 'Shadow 5★',
+  mega: 'Mega', mega_legendary: 'Mega Legendary', primal: 'Primal',
+  super_mega_4: 'Super Mega 4★', super_mega_5: 'Super Mega 5★',
+};
+const STATUS_ORDER = { current: 0, upcoming: 1, past: 2, future: 3 };
 const COUNTERS_SHOWN = 20;
 
 let data;
-const listState = { tier: 'all', query: '' };
+const listState = { tier: 'now', query: '' };
 const settings = loadSettings();
 const counterCache = new Map();
 
@@ -40,29 +47,52 @@ const moveBadge = (id, elite) => {
   return `<span class="move"><span class="dot type-${m.type.toLowerCase()}"></span>${esc(m.name)}${elite ? '<sup title="Elite TM / legacy move">*</sup>' : ''}</span>`;
 };
 const fmtMult = (m) => `${(Math.round(m * 1000) / 1000).toString().replace(/^0\./, '.')}×`;
+const fmtDate = (ms) => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+const bossName = (r) => (TIERS[r.tier].shadow ? `Shadow ${data.pokemon[r.key].name}` : data.pokemon[r.key].name);
+const findRaid = (tier, key) => data.raids.find((r) => r.tier === tier && r.key === key);
+
+function statusBadge(r) {
+  if (r.status === 'current') return '<span class="status status-now">In raids now</span>';
+  if (r.status === 'upcoming') return `<span class="status status-soon">${r.start ? `From ${fmtDate(r.start)}` : 'Coming soon'}</span>`;
+  if (r.status === 'future') return '<span class="status">Not yet in raids</span>';
+  return '';
+}
 
 // ---------- Boss list ----------
+
+// Tabs: "now" = in raids or announced, "future" = could become a boss one day, else a tier.
+// Every tab except "future" leaves out bosses that have never actually appeared.
+const TAB_FILTERS = {
+  now: (r) => r.status === 'current' || r.status === 'upcoming',
+  all: (r) => r.status !== 'future',
+  future: (r) => r.status === 'future',
+};
+const tabFilter = (tab) => TAB_FILTERS[tab] || ((r) => r.tier === tab && r.status !== 'future');
 
 function bossList() {
   const q = listState.query.trim().toLowerCase();
   return data.raids
-    .filter((r) => listState.tier === 'all' || r.tier === listState.tier)
-    .filter((r) => !q || data.pokemon[r.key].name.toLowerCase().includes(q)
+    .filter(tabFilter(listState.tier))
+    .filter((r) => !q || bossName(r).toLowerCase().includes(q)
       || data.pokemon[r.key].types.some((t) => t.toLowerCase() === q))
-    .sort((a, b) => TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)
+    .sort((a, b) => (listState.tier === 'now' ? STATUS_ORDER[a.status] - STATUS_ORDER[b.status] : 0)
+      || TIER_ORDER.indexOf(b.tier) - TIER_ORDER.indexOf(a.tier)
       || data.pokemon[a.key].dex - data.pokemon[b.key].dex
       || data.pokemon[a.key].name.localeCompare(data.pokemon[b.key].name));
 }
 
 function renderList() {
   document.title = 'Raid Boss Guide';
-  const counts = Object.fromEntries(TIER_ORDER.map((t) => [t, data.raids.filter((r) => r.tier === t).length]));
-  const tabs = [['all', `All (${data.raids.length})`], ...TIER_ORDER.filter((t) => counts[t]).map((t) => [t, `${TIER_SHORT[t]} (${counts[t]})`])];
+  const count = (tab) => data.raids.filter(tabFilter(tab)).length;
+  const tabs = [['now', 'Raids now'], ['all', 'All'], ...TIER_ORDER, ['future', 'Possible future']]
+    .map((t) => (Array.isArray(t) ? t : [t, TIER_SHORT[t]]))
+    .map(([t, label]) => [t, label, count(t)])
+    .filter(([, , n]) => n);
   app.innerHTML = `
     <section class="controls">
       <input id="search" type="search" placeholder="Search a Pokémon or type (e.g. Mewtwo, Dragon)" value="${esc(listState.query)}" autocomplete="off">
       <div class="tabs" role="tablist">
-        ${tabs.map(([t, label]) => `<button role="tab" data-tier="${t}" aria-selected="${listState.tier === t}">${label}</button>`).join('')}
+        ${tabs.map(([t, label, n]) => `<button role="tab" data-tier="${t}" aria-selected="${listState.tier === t}">${label} (${n})</button>`).join('')}
       </div>
     </section>
     <section id="grid" class="grid"></section>`;
@@ -88,8 +118,8 @@ function renderGrid() {
         <a class="card" href="#/boss/${r.tier}/${r.key}">
           <img src="${sprite(p.dex)}" alt="" loading="lazy" width="72" height="72" onerror="this.style.visibility='hidden'">
           <div class="card-body">
-            <span class="tier tier-${r.tier}">${TIER_SHORT[r.tier]}</span>
-            <strong>${esc(p.name)}</strong>
+            <span><span class="tier tier-${r.tier}">${TIER_SHORT[r.tier]}</span> ${statusBadge(r)}</span>
+            <strong>${esc(bossName(r))}</strong>
             <div>${typeBadges(p.types)}</div>
           </div>
         </a>`;
@@ -99,12 +129,9 @@ function renderGrid() {
 
 // ---------- Boss detail ----------
 
-function counterOptions(bossMoves) {
-  return { ...settings, bossMoves };
-}
-
 function countersFor(key, tier, bossMoves) {
-  const opts = counterOptions(bossMoves);
+  // Super Mega raids can't be won without Megas, so always rank them.
+  const opts = { ...settings, bossMoves, megas: settings.megas || Boolean(TIERS[tier].superMega) };
   const cacheKey = JSON.stringify([key, tier, opts]);
   if (!counterCache.has(cacheKey)) counterCache.set(cacheKey, rankCounters(data, key, tier, opts));
   return counterCache.get(cacheKey);
@@ -116,7 +143,11 @@ function renderBoss(tier, key, bossMoves) {
     app.innerHTML = '<p class="empty">Raid boss not found. <a href="#/">Back to all bosses</a></p>';
     return;
   }
-  document.title = `${p.name} raid guide`;
+  const raid = findRaid(tier, key) || { key, tier, status: 'past' };
+  const name = bossName(raid);
+  const { superMega } = TIERS[tier];
+  const shields = raid.shields || TIERS[tier].shields;
+  document.title = `${name} raid guide`;
   const boss = bossStats(p, tier);
   const caught = data.pokemon[p.base] || p; // Megas are caught in their normal form
   const normalCp = catchCP(caught);
@@ -125,8 +156,9 @@ function renderBoss(tier, key, bossMoves) {
   const weak = types.filter((t) => t.mult > 1.001);
   const resist = types.filter((t) => t.mult < 0.999).reverse();
   const counters = countersFor(key, tier, bossMoves);
-  const party = pickParty(counters);
-  const budget = pickParty(counters, budgetFilter);
+  const party = pickParty(counters, undefined, { requireMega: superMega });
+  const budget = pickParty(counters, budgetFilter, { requireMega: superMega });
+  const shieldBreakers = superMega ? counters.filter(canBreakShields).slice(0, 6) : [];
   const ownMovesets = bestMovesetsOverall(caught, data, { level: settings.level, elite: true }).slice(0, 5);
   const bossMovePairs = p.fast.flatMap((f) => p.charged.map((c) => [f, c]));
 
@@ -135,8 +167,8 @@ function renderBoss(tier, key, bossMoves) {
     <section class="boss-head">
       <img src="${sprite(p.dex)}" alt="" width="120" height="120" onerror="this.style.visibility='hidden'">
       <div>
-        <span class="tier tier-${tier}">${TIERS[tier].label} raid</span>
-        <h1>${esc(p.name)} <small>#${p.dex}</small></h1>
+        <span class="tier tier-${tier}">${TIERS[tier].label} raid</span> ${statusBadge(raid)}
+        <h1>${esc(name)} <small>#${p.dex}</small></h1>
         <div>${typeBadges(p.types)}</div>
         <dl class="facts">
           <div><dt>Boss CP</dt><dd>${boss.cp.toLocaleString()}</dd></div>
@@ -145,9 +177,16 @@ function renderBoss(tier, key, bossMoves) {
           <div><dt>Weather boosted</dt><dd>${boostedCp.min}–${boostedCp.max}</dd></div>
           <div><dt>Boosted in</dt><dd>${boostedWeather(p.types, data).join(', ') || '—'}</dd></div>
           <div><dt>Timer</dt><dd>${TIERS[tier].time / 60} min</dd></div>
+          ${superMega ? `<div><dt>Shields</dt><dd>${shields}</dd></div>` : ''}
         </dl>
       </div>
     </section>
+    ${superMega ? superMegaPanel(shields, shieldBreakers, tier) : ''}
+    ${TIERS[tier].shadow ? `
+    <section class="panel note">
+      <h2>Shadow raid</h2>
+      <p>Shadow bosses become enraged partway through and hit much harder. Use Purified Gems to calm them down, and bring sturdy counters.</p>
+    </section>` : ''}
 
     <section class="panel">
       <h2>Weaknesses</h2>
@@ -190,8 +229,12 @@ function renderBoss(tier, key, bossMoves) {
 
     <section class="panel">
       <h2>Suggested raid parties</h2>
-      ${partyBlock('Best team', party, tier, 'The strongest six different Pokémon (one Mega at most).')}
-      ${partyBlock('Budget team', budget, tier, 'No Megas, Shadows or Legendaries — Pokémon most trainers can build.')}
+      ${partyBlock('Best team', party, tier, shields, superMega
+    ? 'Led by the best Mega for breaking shields, then the strongest five other Pokémon.'
+    : 'The strongest six different Pokémon (one Mega at most).')}
+      ${partyBlock('Budget team', budget, tier, shields, superMega
+    ? 'A non-Legendary Mega to break a shield, then no Shadows or Legendaries.'
+    : 'No Megas, Shadows or Legendaries — Pokémon most trainers can build.')}
     </section>
 
     <section class="panel">
@@ -200,7 +243,7 @@ function renderBoss(tier, key, bossMoves) {
       <div class="table-wrap">
         <table class="counters">
           <thead><tr><th>#</th><th>Pokémon</th><th>Moves</th><th>DPS</th><th>TDO</th><th>Rating</th></tr></thead>
-          <tbody id="counter-rows">${counterRows(counters.slice(0, COUNTERS_SHOWN))}</tbody>
+          <tbody id="counter-rows">${counterRows(counters.slice(0, COUNTERS_SHOWN), superMega)}</tbody>
         </table>
       </div>
       ${counters.length > COUNTERS_SHOWN ? '<button id="more" class="more">Show more counters</button>' : ''}
@@ -219,7 +262,7 @@ function renderBoss(tier, key, bossMoves) {
   let shown = COUNTERS_SHOWN;
   app.querySelector('#more')?.addEventListener('click', (e) => {
     shown += COUNTERS_SHOWN;
-    app.querySelector('#counter-rows').innerHTML = counterRows(counters.slice(0, shown));
+    app.querySelector('#counter-rows').innerHTML = counterRows(counters.slice(0, shown), superMega);
     if (shown >= counters.length) e.target.remove();
   });
 
@@ -242,9 +285,31 @@ function renderBoss(tier, key, bossMoves) {
   });
 }
 
-function partyBlock(title, party, tier, blurb) {
+function superMegaPanel(shields, breakers, tier) {
+  const trueMega = tier === 'super_mega_5';
+  return `
+    <section class="panel note">
+      <h2>Super Mega raid</h2>
+      <p>This boss starts with <strong>${shields} shields</strong>. While they're up it deals ${SHIELD_ATK}× damage and
+      takes ${SHIELD_DEF}× less. Only a <strong>Mega-Evolved</strong> Pokémon${trueMega ? ' (not Primal Kyogre or Groudon)' : ''}
+      can break a shield, with a charged attack, and each trainer can break just one.
+      So you need <strong>at least ${shields} trainers, each with a Mega</strong> in their team.</p>
+      <h3>Best Megas to bring</h3>
+      <ol class="party-list">
+        ${breakers.map((c) => `
+          <li>
+            <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+            <strong>${esc(c.name)}</strong>
+            <span>${moveBadge(c.fast, data.pokemon[c.key].eliteFast.includes(c.fast))}</span>
+            <span>${moveBadge(c.charged, data.pokemon[c.key].eliteCharged.includes(c.charged))}</span>
+          </li>`).join('')}
+      </ol>
+    </section>`;
+}
+
+function partyBlock(title, party, tier, shields, blurb) {
   if (!party.length) return '';
-  const trainers = trainersNeeded(party, tier);
+  const trainers = trainersNeeded(party, tier, shields);
   return `
     <div class="party">
       <div class="party-head">
@@ -264,13 +329,14 @@ function partyBlock(title, party, tier, blurb) {
     </div>`;
 }
 
-function counterRows(rows) {
+function counterRows(rows, superMega) {
   return rows.map((c, i) => {
     const p = data.pokemon[c.key];
+    const breaker = superMega && canBreakShields(c) ? ' <span class="status status-now">Breaks shields</span>' : '';
     return `
       <tr>
         <td>${i + 1}</td>
-        <td><span class="cname">${esc(c.name)}</span><div>${typeBadges(c.types)}</div></td>
+        <td><span class="cname">${esc(c.name)}</span>${breaker}<div>${typeBadges(c.types)}</div></td>
         <td>${moveBadge(c.fast, p.eliteFast.includes(c.fast))}<br>${moveBadge(c.charged, p.eliteCharged.includes(c.charged))}</td>
         <td>${c.dps.toFixed(1)}</td>
         <td>${Math.round(c.tdo)}</td>

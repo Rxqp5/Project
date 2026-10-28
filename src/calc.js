@@ -13,10 +13,21 @@ export const TIERS = {
   3: { label: '3-Star', hp: 3600, cpm: 0.7300, time: 180 },
   4: { label: '4-Star', hp: 9000, cpm: 0.7900, time: 180 },
   5: { label: '5-Star', hp: 15000, cpm: 0.7900, time: 300 },
+  elite: { label: 'Elite', hp: 20000, cpm: 0.9850, time: 300 },
   mega: { label: 'Mega', hp: 9000, cpm: 0.7900, time: 300 },
   mega_legendary: { label: 'Mega Legendary', hp: 22500, cpm: 0.7900, time: 300 },
   primal: { label: 'Primal', hp: 22500, cpm: 0.7900, time: 300 },
+  // Super Mega raids: the boss starts with shields that only Mega-Evolved Pokémon can break.
+  super_mega_4: { label: 'Super Mega ★4', hp: 25000, cpm: 0.7900, time: 300, superMega: true, shields: 8 },
+  super_mega_5: { label: 'Super Mega ★5', hp: 25000, cpm: 0.7900, time: 300, superMega: true, shields: 8 },
+  shadow_1: { label: 'Shadow 1-Star', hp: 600, cpm: 0.5974, time: 180, shadow: true },
+  shadow_3: { label: 'Shadow 3-Star', hp: 4000, cpm: 0.7600, time: 180, shadow: true },
+  shadow_5: { label: 'Shadow 5-Star', hp: 15000, cpm: 0.8200, time: 300, shadow: true },
 };
+
+// While a Super Mega boss's shields are up it hits harder and takes far less damage.
+export const SHIELD_ATK = 2;
+export const SHIELD_DEF = 4;
 
 export const STAB = 1.2;
 export const WEATHER_BOOST = 1.2;
@@ -190,11 +201,21 @@ export function rankCounters(data, bossKey, tier, opts = {}) {
   return results;
 }
 
+// Only true Mega Evolutions break Super Mega shields; Primal Reversion doesn't count.
+export const canBreakShields = (c) => c.mega === 'mega';
+
 // Six different species, at most one Mega/Primal (only one can be active at a time).
-export function pickParty(counters, filter = () => true, size = 6) {
+// With `requireMega`, the best shield-breaking Mega that passes the filter leads the team.
+export function pickParty(counters, filter = () => true, { size = 6, requireMega = false } = {}) {
   const party = [];
   const dexUsed = new Set();
   let megaUsed = false;
+  const leader = requireMega && counters.find((c) => canBreakShields(c) && filter(c, true));
+  if (leader) {
+    party.push(leader);
+    dexUsed.add(leader.dex);
+    megaUsed = true;
+  }
   for (const c of counters) {
     if (!filter(c) || dexUsed.has(c.dex) || (c.mega && megaUsed)) continue;
     party.push(c);
@@ -205,13 +226,17 @@ export function pickParty(counters, filter = () => true, size = 6) {
   return party;
 }
 
-export const budgetFilter = (c) => !c.mega && !c.shadow && !c.legendary;
+// `asLeader` lets a budget team still bring the Mega a Super Mega raid demands, as long as
+// it isn't a Legendary.
+export const budgetFilter = (c, asLeader = false) => (asLeader ? !c.legendary : !c.mega && !c.shadow && !c.legendary);
 
 // Rough number of trainers needed with this party. Assumes ~80% of the timer is spent attacking.
-export function trainersNeeded(party, tier) {
+// Super Mega raids also need one Mega-wielding trainer per shield.
+export function trainersNeeded(party, tier, shields = TIERS[tier].shields) {
   if (!party.length) return null;
   const t = TIERS[tier];
   const avgDps = party.reduce((s, c) => s + c.dps, 0) / party.length;
   const perTrainer = avgDps * t.time * 0.8;
-  return Math.max(1, Math.ceil(t.hp / perTrainer));
+  const byDamage = Math.max(1, Math.ceil(t.hp / perTrainer));
+  return t.superMega ? Math.max(byDamage, shields) : byDamage;
 }

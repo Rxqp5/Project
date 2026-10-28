@@ -41,3 +41,20 @@ test('parties have six species and at most one Mega', () => {
   assert.ok(pickParty(counters, budgetFilter).every(budgetFilter));
   assert.ok(trainersNeeded(party, '5') >= 1);
 });
+
+test('Super Mega parties lead with a shield-breaking Mega and need a trainer per shield', () => {
+  const counters = rankCounters(data, 'CHANDELURE_MEGA', 'super_mega_4');
+  for (const filter of [undefined, budgetFilter]) {
+    const party = pickParty(counters, filter, { requireMega: true });
+    assert.equal(party[0].mega, 'mega');
+    assert.equal(party.filter((c) => c.mega).length, 1);
+  }
+  assert.ok(trainersNeeded(pickParty(counters), 'super_mega_4', 10) >= 10);
+});
+
+test('live raid data includes Super Mega and Shadow tiers', () => {
+  const tiers = new Set(data.raids.map((r) => r.tier));
+  for (const t of ['super_mega_4', 'super_mega_5', 'shadow_5']) assert.ok(tiers.has(t), t);
+  assert.ok(data.raids.some((r) => r.key === 'VICTREEBEL_MEGA' && r.tier === 'super_mega_4'));
+  assert.ok(data.pokemon.NIDORAN_FEMALE && data.pokemon.NIDORAN_MALE);
+});

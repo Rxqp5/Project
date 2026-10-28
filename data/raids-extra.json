@@ -1,4 +1,15 @@
 {
-  "_help": "Add raid bosses here that are missing from the automatic list. 'key' is the Pokémon's id in data/game.json (e.g. MEWTWO, MAROWAK_ALOLA, CHARIZARD_MEGA_X). 'tier' is one of 1, 3, 5, mega, mega_legendary, primal. Run `npm run build:data` after editing.",
-  "bosses": []
+  "_help": "Raid bosses added by hand, for anything the automatic sources miss. 'key' is the Pokémon's id in data/game.json (e.g. MEWTWO, MAROWAK_ALOLA, CHARIZARD_MEGA_X). 'tier' is one of 1, 3, 5, elite, mega, mega_legendary, primal, super_mega_4, super_mega_5, shadow_1, shadow_3, shadow_5. Optional: 'status' (past, current, upcoming; default past) and 'shields' (Super Mega raids). Run `npm run build:data` after editing.",
+  "_sources": "Super Mega shield counts: in-game lobby counts reported by poketory.com and Pokebattler raid guides.",
+  "bosses": [
+    { "key": "MEWTWO_MEGA_X", "tier": "super_mega_5", "shields": 10 },
+    { "key": "MEWTWO_MEGA_Y", "tier": "super_mega_5", "shields": 10 },
+    { "key": "VICTREEBEL_MEGA", "tier": "super_mega_4", "shields": 8 },
+    { "key": "DRAGONITE_MEGA", "tier": "super_mega_4", "shields": 10 },
+    { "key": "MALAMAR_MEGA", "tier": "super_mega_4", "shields": 8 },
+    { "key": "FALINKS_MEGA", "tier": "super_mega_4", "shields": 8 },
+    { "key": "RAICHU_MEGA_X", "tier": "super_mega_4", "shields": 7 },
+    { "key": "RAICHU_MEGA_Y", "tier": "super_mega_4", "shields": 7 },
+    { "key": "SKARMORY_MEGA", "tier": "super_mega_4", "shields": 7 }
+  ]
 }

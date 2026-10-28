@@ -1,5 +1,5 @@
 // Offline support: serve the app shell and data from cache, refreshing in the background.
-const CACHE = 'raid-guide-v1';
+const CACHE = 'raid-guide-v2';
 const SHELL = ['./', 'index.html', 'src/styles.css', 'src/app.js', 'src/calc.js', 'data/game.json', 'icon.svg', 'manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
