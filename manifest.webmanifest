@@ -1,0 +1,10 @@
+{
+  "name": "Raid Boss Guide",
+  "short_name": "Raid Guide",
+  "description": "Every Pokémon GO raid boss with weaknesses, top counters, best movesets and suggested raid parties.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#111827",
+  "theme_color": "#1f2937",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

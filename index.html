@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Raid Boss Guide</title>
+  <meta name="description" content="Every Pokémon GO raid boss with weaknesses, top counters, best movesets and suggested raid parties.">
+  <meta name="theme-color" content="#1f2937">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/" class="brand">
+      <img src="icon.svg" alt="" width="28" height="28">
+      <span>Raid Boss Guide</span>
+    </a>
+    <nav class="nav">
+      <a href="#/">Rotation</a>
+      <a href="#/bosses">All bosses</a>
+    </nav>
+  </header>
+  <main id="app" aria-live="polite">
+    <p class="loading">Loading raid data…</p>
+  </main>
+  <footer class="footer">
+    Fan-made tool, not affiliated with Niantic, Nintendo or The Pokémon Company.
+    Data: PokeMiners game master, PvPoke, Pokebattler, LeekDuck (via ScrapedDuck), pogoapi.net. <span id="data-date"></span>
+  </footer>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
