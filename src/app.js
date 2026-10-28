@@ -8,6 +8,8 @@ import { rankOwned, rankOwnedMax, moveTips, loadCollection, saveCollection } fro
 import { renderMine } from './mine.js';
 import { renderPowerUp, renderPokemon } from './pokemon-pages.js';
 import { typeRankings, maxTopAttackers } from './advice.js';
+import { toIcs } from './calendar.js';
+import { renderTypes } from './types-page.js';
 
 const app = document.getElementById('app');
 const TIER_ORDER = ['1', '2', '3', '4', '5', 'elite', 'shadow_1', 'shadow_3', 'shadow_5',
@@ -28,6 +30,28 @@ let schedule; // { events, lineup, fetched, live }
 const listState = { tier: 'all', query: '' };
 const settings = loadSettings();
 let collection = loadCollection(safeStorage());
+const favourites = loadFavourites();
+
+// Favourite bosses, by Pokémon (so a favourite shows up in any tier it appears in).
+function loadFavourites() {
+  try {
+    return new Set(JSON.parse(safeStorage().getItem('favourites') || '[]'));
+  } catch {
+    return new Set();
+  }
+}
+
+function toggleFavourite(key) {
+  if (favourites.has(key)) favourites.delete(key);
+  else favourites.add(key);
+  try {
+    safeStorage().setItem('favourites', JSON.stringify([...favourites]));
+  } catch {
+    // Not saved (private browsing); it still works for this visit.
+  }
+}
+
+const favStar = (key) => (favourites.has(key) ? '<span class="fav-star" title="Favourite">★</span> ' : '');
 
 function safeStorage() {
   try {
@@ -92,6 +116,7 @@ function statusBadge(r) {
 // Every tab except "future" leaves out bosses that have never actually appeared.
 const TAB_FILTERS = {
   all: (r) => r.status !== 'future',
+  favourites: (r) => favourites.has(r.key) && r.status !== 'future',
   future: (r) => r.status === 'future',
 };
 const tabFilter = (tab) => TAB_FILTERS[tab] || ((r) => r.tier === tab && r.status !== 'future');
@@ -110,10 +135,10 @@ function bossList() {
 function renderList() {
   document.title = 'Raid Boss Guide';
   const count = (tab) => data.raids.filter(tabFilter(tab)).length;
-  const tabs = [['all', 'All'], ...TIER_ORDER, ['future', 'Possible future']]
+  const tabs = [['all', 'All'], ['favourites', '★ Favourites'], ...TIER_ORDER, ['future', 'Possible future']]
     .map((t) => (Array.isArray(t) ? t : [t, TIER_SHORT[t]]))
     .map(([t, label]) => [t, label, count(t)])
-    .filter(([, , n]) => n);
+    .filter(([t, , n]) => n || t === 'favourites');
   app.innerHTML = `
     <section class="controls">
       <input id="search" type="search" placeholder="Search a Pokémon or type (e.g. Mewtwo, Dragon)" value="${esc(listState.query)}" autocomplete="off">
@@ -145,12 +170,14 @@ function renderGrid() {
           <img src="${sprite(p.dex)}" alt="" loading="lazy" width="72" height="72" onerror="this.style.visibility='hidden'">
           <div class="card-body">
             <span><span class="tier tier-${r.tier}">${TIER_SHORT[r.tier]}</span> ${statusBadge(r)}</span>
-            <strong>${esc(bossName(r))}</strong>
+            <strong>${favStar(r.key)}${esc(bossName(r))}</strong>
             <div>${typeBadges(p.types)}</div>
           </div>
         </a>`;
     }).join('')
-    : '<p class="empty">No raid bosses match that search.</p>';
+    : `<p class="empty">${listState.tier === 'favourites'
+      ? 'No favourites yet. Open a boss and tap ☆ Favourite to keep it here and highlight it in the rotation.'
+      : 'No raid bosses match that search.'}</p>`;
 }
 
 // ---------- Boss detail ----------
@@ -193,6 +220,7 @@ function renderBoss(tier, key, bossMoves) {
       <div>
         <span class="tier tier-${tier}">${TIERS[tier].label} ${isMax ? 'Max Battle' : 'raid'}</span> ${statusBadge(raid)}
         <h1>${esc(name)} <small>#${p.dex}</small></h1>
+        <button type="button" id="fav" class="fav-button" aria-pressed="${favourites.has(key)}">${favourites.has(key) ? '★ Favourite' : '☆ Favourite'}</button>
         <div>${typeBadges(p.types)}</div>
         <dl class="facts">
           <div><dt>Boss CP</dt><dd>${boss.cp.toLocaleString()}</dd></div>
@@ -263,6 +291,12 @@ function renderBoss(tier, key, bossMoves) {
       <h3>Moves the boss can use</h3>
       <div class="moves">${[...p.fast, ...p.charged].map((m) => moveBadge(m)).join('')}</div>
     </section>`;
+
+  app.querySelector('#fav').addEventListener('click', (e) => {
+    toggleFavourite(key);
+    e.target.setAttribute('aria-pressed', favourites.has(key));
+    e.target.textContent = favourites.has(key) ? '★ Favourite' : '☆ Favourite';
+  });
 
   let shown = COUNTERS_SHOWN;
   app.querySelector('#more')?.addEventListener('click', (e) => {
@@ -514,16 +548,9 @@ function route({ keepScroll = false } = {}) {
     a.getAttribute('href') === `#/${page === 'boss' ? 'bosses' : page || ''}`));
   if (page === 'boss') renderBoss(tier, key, moves ? moves.split(',') : undefined);
   else if (page === 'bosses') renderList();
-  else if (page === 'mine') {
-    renderMine(app, {
-      data, esc, sprite, typeBadges, moveBadge,
-      getCollection: () => collection,
-      setCollection: (list) => {
-        collection = list;
-        return saveCollection(safeStorage(), list);
-      },
-    });
-  } else if (page === 'powerup') renderPowerUp(app, pageContext());
+  else if (page === 'mine') renderMine(app, pageContext());
+  else if (page === 'types') renderTypes(app, pageContext(), tier);
+  else if (page === 'powerup') renderPowerUp(app, pageContext());
   else if (page === 'pokemon') renderPokemon(app, pageContext(), tier);
   else renderRotation();
   if (!keepScroll) window.scrollTo({ top: 0 });
@@ -578,6 +605,27 @@ const SPECIAL_LABELS = { 'raid-hour': 'Raid Hour', 'raid-day': 'Raid Day', 'max-
 // Tiers that only appear in LeekDuck's undated lineup (the others come with dates).
 const UNDATED_TIERS = new Set(['1', '3', 'shadow_1', 'shadow_3']);
 
+// Rotation items that can be added to a calendar: dated bosses and Raid Hours / Days / Max Mondays.
+const calendarItems = [];
+
+function downloadIcs(filename, text) {
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(new Blob([text], { type: 'text/calendar' })),
+    download: filename,
+  });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function addToCalendar(item) {
+  const title = item.kind === 'special' ? item.title : `${bossName(item)} in ${TIERS[item.tier]?.label || ''} raids`;
+  downloadIcs(`${(item.key || item.name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}.ics`, toIcs([{
+    uid: `${item.title}-${item.start.getTime()}`.replace(/[^A-Za-z0-9-]+/g, '-'),
+    title, start: item.start, end: item.end, url: item.link,
+    alarmMinutes: item.kind === 'special' ? 30 : 0,
+  }], { name: title }));
+}
+
 function rotationRow(item) {
   const p = item.key && data.pokemon[item.key];
   const name = p ? bossName(item) : item.name;
@@ -588,17 +636,26 @@ function rotationRow(item) {
   else if (item.first) when = `${fmtDateTime(item.start)} → ${fmtDateTime(item.end)}`;
   else if (item.endsToday) when = `Last day · ends ${fmtTime(item.end)}`;
   else if (item.kind === 'boss') when = `Until ${fmtDay(item.end)}`;
-  return `
-    <a class="rot ${item.kind === 'special' ? 'rot-special' : ''}" href="${esc(href)}" ${p ? '' : 'target="_blank" rel="noopener"'}>
+  const dated = item.kind !== 'lineup' && item.start && item.end;
+  if (dated) calendarItems.push(item);
+  const fav = p && favourites.has(item.key);
+  const row = `
+    <a class="rot ${item.kind === 'special' ? 'rot-special' : ''}${fav ? ' rot-fav' : ''}" href="${esc(href)}" ${p ? '' : 'target="_blank" rel="noopener"'}>
       ${p ? `<img src="${sprite(p.dex)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">★</span>'}
       <span class="rot-body">
         <span><span class="tier tier-${item.kind === 'special' ? 'special' : item.tier}">${label}</span>
           ${item.first && item.kind === 'boss' && item.startsToday ? '<span class="status status-soon">Starts today</span>' : ''}</span>
-        <strong>${esc(name)}${item.shiny ? ' <span title="Can be shiny">✨</span>' : ''}</strong>
+        <strong>${fav ? favStar(item.key) : ''}${esc(name)}${item.shiny ? ' <span title="Can be shiny">✨</span>' : ''}</strong>
         ${when ? `<span class="rot-when${item.first ? ' rot-first' : ''}">${when}</span>` : ''}
       </span>
     </a>`;
+  // Only the first time an item is listed gets a reminder button.
+  return dated && item.first
+    ? `<div class="rot-wrap">${row}<button type="button" class="bell" data-cal="${calendarItems.length - 1}" title="Add to my calendar" aria-label="Add ${esc(name)} to my calendar">🔔</button></div>`
+    : row;
 }
+
+const calendarUrl = () => new URL('data/raid-calendar.ics', location.href.split('#')[0]);
 
 function renderRotation() {
   document.title = 'Raid rotation · Raid Boss Guide';
@@ -610,6 +667,15 @@ function renderRotation() {
   const days = rotationDays(items);
   const lineup = lineupItems(schedule.lineup, data).filter((r) => UNDATED_TIERS.has(r.tier));
   const order = (i) => (i.kind === 'special' ? -1 : TIER_ORDER.length - TIER_ORDER.indexOf(i.tier));
+  calendarItems.length = 0;
+  const favsComing = [];
+  for (const d of days) {
+    for (const i of d.items) {
+      if (i.first && i.key && favourites.has(i.key) && !favsComing.some((f) => f.key === i.key)) favsComing.push(i);
+    }
+  }
+  // webcal:// opens the phone's Calendar app to subscribe (a URL object can't switch to it).
+  const webcal = { href: calendarUrl().href.replace(/^https?:/, 'webcal:') };
   app.innerHTML = `
     <section class="rotation-head">
       <h1>Raid rotation</h1>
@@ -617,6 +683,24 @@ function renderRotation() {
       From <a href="https://leekduck.com/events/" target="_blank" rel="noopener">LeekDuck</a>,
       ${schedule.live ? 'checked just now' : `saved ${fmtDay(new Date(schedule.fetched))} (offline copy)`}.</p>
     </section>
+    ${favsComing.length ? `
+    <section class="panel note">
+      <h2>★ Your favourites</h2>
+      <ul class="reasons">${favsComing.map((i) => `<li><a href="#/boss/${i.tier}/${i.key}">${esc(bossName(i))}</a>:
+        ${i.start <= new Date() ? `in raids now, until ${fmtDay(i.end)}` : `from ${fmtDateTime(i.start)}`}</li>`).join('')}</ul>
+    </section>` : ''}
+    <details class="panel reminders">
+      <summary><strong>🔔 Reminders</strong> <span class="hint">get Raid Hours, Raid Days and new bosses in your calendar</span></summary>
+      <p>Tap <strong>🔔</strong> on anything below to add it to your phone's calendar with an alert (30 minutes before
+      Raid Hours, Raid Days and Max Mondays).</p>
+      <p>Or subscribe to all of them. Your calendar then fills in new events by itself:</p>
+      <div class="form-actions">
+        <a class="button primary" href="${esc(webcal.href)}">Subscribe in Calendar</a>
+        <a class="button" href="${esc(calendarUrl().href)}" download>Download all as a file</a>
+      </div>
+      <p class="hint">On iPhone, subscribed calendars may hide alerts: in Settings → Calendar → Accounts → Subscribed
+      Calendars, turn off "Remove Alerts". Or use the 🔔 buttons, which always keep their alert.</p>
+    </details>
     ${days.map((d, n) => `
       <section class="day">
         <h2>${n === 0 ? 'Today · ' : n === 1 ? 'Tomorrow · ' : ''}${fmtDay(d.date)}</h2>
@@ -626,6 +710,7 @@ function renderRotation() {
           <h3>Also in raids now <span class="hint">(no end date announced)</span></h3>
           <div class="rot-list compact">${lineup.map(rotationRow).join('')}</div>` : ''}
       </section>`).join('')}`;
+  app.querySelectorAll('[data-cal]').forEach((b) => b.addEventListener('click', () => addToCalendar(calendarItems[b.dataset.cal])));
 }
 
 async function loadSchedule() {

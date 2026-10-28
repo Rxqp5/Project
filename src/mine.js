@@ -1,6 +1,6 @@
 // "My Pokémon" page: the player's own Pokémon, entered by hand and saved on this device.
 
-import { AVERAGE_IVS, estimateLevel, validEntries } from './collection.js';
+import { AVERAGE_IVS, estimateLevel, validEntries, scanPriorities } from './collection.js';
 import { readScreenshot, mergeScreens, readPokemon, readGridTiles, solveLevelAndIvs, summarizeMatches } from './scan.js';
 import { bestMovesetsOverall } from './calc.js';
 
@@ -196,6 +196,31 @@ export function renderMine(app, ctx) {
     render();
   }
 
+  // Storage imports to scan next, so the player's real teams get their real moves.
+  function scanNextPanel(list) {
+    const unchecked = list.filter((e) => e.movesUnknown).length;
+    if (!unchecked || !ctx.adviceContext) return '';
+    const priorities = scanPriorities(data, list, ctx.adviceContext().bosses).slice(0, 8);
+    return `
+      <section class="panel note">
+        <h2>Scan these next</h2>
+        <p class="hint">${unchecked} of your Pokémon came from storage, so their moves are guesses. These are in your best
+        team for the most raids right now: screenshot their pages (top and moves) to check them.</p>
+        ${priorities.length ? `<ul class="mine-list">${priorities.map(({ entry: e, bosses }) => {
+    const p = data.pokemon[e.key];
+    return `
+          <li class="mine-card">
+            <img src="${sprite(p.dex)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
+            <div class="mine-body">
+              <strong>${e.shadow ? 'Shadow ' : ''}${esc(p.name)}</strong> <span class="muted">CP ${e.cp}</span>
+              <span class="hint">In your best team for ${bosses.length} raid${bosses.length > 1 ? 's' : ''}:
+                ${bosses.slice(0, 3).map((b) => `<a href="#/boss/${b.tier}/${b.key}">${esc(ctx.bossName(b))}</a>`).join(', ')}${bosses.length > 3 ? '…' : ''}</span>
+            </div>
+          </li>`;
+  }).join('')}</ul>` : '<p class="hint">None of them make your best teams for the current raids.</p>'}
+      </section>`;
+  }
+
   function render() {
     const list = ctx.getCollection();
     const editing = list.find((e) => e.id === editingId) || prefill;
@@ -229,6 +254,8 @@ export function renderMine(app, ctx) {
         <p class="hint" role="status">${esc(scanStatus)}</p>
         ${drafts.length ? `<ul class="mine-list">${drafts.map(draftCard).join('')}</ul>` : ''}
       </section>
+
+      ${scanNextPanel(list)}
 
       <section class="panel">
         <h2>${editingId ? `Edit ${esc(data.pokemon[editing.key].name)}` : prefill ? `Check ${esc(data.pokemon[prefill.key]?.name || 'this Pokémon')}` : 'Add a Pokémon by hand'}</h2>

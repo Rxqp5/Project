@@ -24,6 +24,14 @@ For each boss the app gives:
 
 **Look up** shows any Pokémon's raid value: type rankings, best movesets, which current bosses it's good against, its weaknesses, and advice for your copies. You can also look one up from a screenshot.
 
+**Scan these next:** after a storage import, My Pokémon lists the unchecked Pokémon that appear in your best team for the most current raids, so you know whose pages to screenshot first.
+
+**Types:** the full Pokémon GO type chart, and a page per type with what it beats and what beats it, its best raid attackers, and your own best ones.
+
+**Favourites:** tap ☆ Favourite on any boss. Favourites get their own tab in All bosses, are highlighted in the rotation, and are listed at the top with when they're next in raids.
+
+**Reminders:** the rotation's 🔔 buttons add a Raid Hour, Raid Day, Max Monday or boss rotation to your phone's calendar with an alert. You can also subscribe to `data/raid-calendar.ics`, which the daily build regenerates, so new events appear in your calendar by themselves.
+
 Counters change with your settings: Pokémon level (40/50), weather, the boss's moveset, and whether to include Megas, Shadows, Legendaries and Elite TM moves.
 
 It runs in any browser, works on phones, and can be added to the home screen like an app (it also works offline).
@@ -56,6 +64,9 @@ npm run build:data # re-download game data and rebuild data/game.json
 | `src/scan.js` | Reads Pokémon GO screenshots: text recognition, species, CP, moves, level and IVs |
 | `src/advice.js` | Power-up advice: type rankings, boss placements, costs, verdicts |
 | `src/pokemon-pages.js` | The Power up? and Look up pages |
+| `src/types-page.js` | The type chart and per-type pages |
+| `src/calendar.js` | Calendar (.ics) files for reminders, shared by the app and the build |
+| `data/raid-calendar.ics` | Generated: subscribable calendar of raid events |
 | `scripts/build-data.mjs` | Builds `data/game.json` from public data sources |
 | `data/game.json` | Generated data: every Pokémon, move and raid boss |
 | `data/raids-extra.json` | Raid bosses added by hand (see below) |
