@@ -86,6 +86,7 @@ npm run build:data # re-download game data and rebuild data/game.json
 - [PvPoke](https://github.com/pvpoke/pvpoke): which Pokémon and Shadows are released, and display names
 - [Pokebattler](https://www.pokebattler.com): current, upcoming and past raid bosses for every tier, plus stats and moves for Megas and moves newer than the game master
 - [pogoapi.net](https://pogoapi.net): older raid history (last updated November 2025)
+- [PokeAPI](https://pokeapi.co): sprites, including separate ones for forms, Megas and Gigantamax (e.g. Kyurem (White), Necrozma (Dusk Mane)), matched by name and checked when the data is built
 - [LeekDuck](https://leekduck.com/events/) via [ScrapedDuck](https://github.com/bigfoott/ScrapedDuck): raid rotation dates and the current lineup
 
 **Super Mega raids** (since February 2026) come in a 4★ and a 5★ tier with 25,000 HP. The boss starts with shields (usually 7 to 10). While they're up it deals 2× damage and takes 4× less. Only a Mega-Evolved Pokémon can break a shield, one per trainer, so you need at least as many trainers with Megas as there are shields.

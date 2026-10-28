@@ -64,7 +64,7 @@ export function renderMax(app, ctx) {
   const maxMove = (a) => `${typeBadge(a.maxType)}${a.gmaxMove ? ' <span class="status status-soon">G-Max</span>' : ''}`;
   const memberCard = (c) => `
     <li>
-      <img src="${sprite(c.dex, c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+      <img src="${sprite(c.key, c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
       <span class="status">${c.role}</span>
       <strong>${esc(c.name)}</strong>
       <span class="muted">CP ${c.cp}</span>
@@ -100,7 +100,7 @@ export function renderMax(app, ctx) {
       <h2>Your Dynamax Pokémon</h2>
       <ul class="mine-list">${usage.map(({ member: m, bosses: list }) => `
         <li class="mine-card">
-          <img src="${sprite(m.dex, m.shiny)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
+          <img src="${sprite(m.key, m.shiny)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
           <div class="mine-body">
             <strong>${esc(m.name)}</strong> <span class="muted">CP ${m.cp}</span>
             <span class="hint">In your team for ${list.length} Max Battle${list.length > 1 ? 's' : ''}
@@ -116,7 +116,7 @@ export function renderMax(app, ctx) {
       <p class="hint">Among the best attackers or tanks for the current Max Battles, and you don't have them as Dynamax yet.</p>
       ${wanted.length ? `<ul class="mine-list">${wanted.map((w) => `
         <li class="mine-card">
-          <img src="${sprite(w.dex)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
+          <img src="${sprite(w.key)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
           <div class="mine-body">
             <strong><a href="#/pokemon/${data.pokemon[w.key].base || w.key}">${esc(w.name)}</a></strong>
             <div>${typeBadges(w.types)} ${[...w.roles].map((r) => `<span class="status">${r}</span>`).join(' ')}</div>

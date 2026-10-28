@@ -27,6 +27,7 @@ const SOURCES = {
   pokebattler: 'https://fight.pokebattler.com/raids',
   pokebattlerPokemon: 'https://fight.pokebattler.com/pokemon',
   pokebattlerMoves: 'https://fight.pokebattler.com/moves',
+  pokeapi: 'https://pokeapi.co/api/v2/pokemon?limit=3000',
   raids: 'https://pogoapi.net/api/v1/raid_bosses.json',
   events: 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/events.json',
   lineup: 'https://raw.githubusercontent.com/bigfoott/ScrapedDuck/data/raids.json',
@@ -54,8 +55,8 @@ async function load(name) {
 const typeName = (t) => t && t.replace('POKEMON_TYPE_', '').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 const titleCase = (s) => s.toLowerCase().split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 
-const [gm, pvpoke, pokebattler, pbPokemon, pbMoves, raidSource, events, lineup] = await Promise.all(
-  ['gm', 'pvpoke', 'pokebattler', 'pokebattlerPokemon', 'pokebattlerMoves', 'raids', 'events', 'lineup'].map(load));
+const [gm, pvpoke, pokebattler, pbPokemon, pbMoves, raidSource, events, lineup, pokeapi] = await Promise.all(
+  ['gm', 'pvpoke', 'pokebattler', 'pokebattlerPokemon', 'pokebattlerMoves', 'raids', 'events', 'lineup', 'pokeapi'].map(load));
 const extra = JSON.parse(await readFile(`${root}data/raids-extra.json`, 'utf8'));
 
 // ---------- Type chart & weather ----------
@@ -378,6 +379,44 @@ const powerUp = {
   purified: upgrades.purifiedStardustMultiplier,
   lucky: 0.5,
 };
+
+// ---------- Sprites for forms ----------
+// Sprites come from PokeAPI, by its Pokémon id. Forms, Megas and Gigantamax have their own ids
+// (Kyurem (White) is 10023), found by turning our key into PokeAPI's name for it.
+const SPRITE_BASE = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/';
+const pokeapiIds = new Map(pokeapi.results.map((r) => [r.name, Number(r.url.split('/').filter(Boolean).pop())]));
+const FORM_WORDS = [
+  [/-galarian\b/, '-galar'], [/-hisuian\b/, '-hisui'], [/-gigantamax\b/, '-gmax'], [/-dusk-mane\b/, '-dusk'],
+  [/-dawn-wings\b/, '-dawn'], [/-crowned-(sword|shield)\b/, '-crowned'], [/-ice-rider\b/, '-ice'],
+  [/-shadow-rider\b/, '-shadow'], [/-female\b/, '-f'], [/-male\b/, '-m'], [/-ten-percent\b/, '-10'],
+  [/-fifty-percent\b/, '-50'], [/-mega-eternal\b/, '-mega'],
+];
+function pokeapiName(key) {
+  let slug = key.toLowerCase().replace(/_/g, '-');
+  for (const [from, to] of FORM_WORDS) slug = slug.replace(from, to);
+  return slug;
+}
+const spriteExists = async (id) => {
+  try {
+    return (await fetch(`${SPRITE_BASE}${id}.png`, { method: 'HEAD' })).ok;
+  } catch {
+    return false;
+  }
+};
+const formSprites = [];
+for (const [key, p] of Object.entries(pokemon)) {
+  const id = pokeapiIds.get(pokeapiName(key));
+  if (id && id !== p.dex && id >= 10000) formSprites.push([key, id]);
+}
+// Check each form's sprite exists (a few newer forms have none), a batch at a time.
+for (let i = 0; i < formSprites.length; i += 25) {
+  const batch = formSprites.slice(i, i + 25);
+  const ok = await Promise.all(batch.map(([, id]) => spriteExists(id)));
+  batch.forEach(([key, id], j) => {
+    if (ok[j]) pokemon[key].sprite = id;
+  });
+}
+console.log(`Form sprites: ${Object.values(pokemon).filter((p) => p.sprite).length} of ${formSprites.length} found.`);
 
 const output = {
   generated: new Date().toISOString(),

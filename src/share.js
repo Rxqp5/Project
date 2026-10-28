@@ -51,8 +51,8 @@ function fitText(g, text, maxWidth) {
   return `${t}…`;
 }
 
-// card: { title, subtitle, weak: [{ type, mult }], heading, members: [{ dex, name, detail?, moves: [{ name, type }] }],
-//         sprite: (dex) => url, footer }
+// card: { title, subtitle, bossKey, weak: [{ type, mult }], heading,
+//         members: [{ key, name, shiny?, detail?, moves: [{ name, type }] }], sprite: (key, shiny) => url, footer }
 export async function drawTeamCard(card) {
   const canvas = Object.assign(document.createElement('canvas'), { width: W, height: H });
   const g = canvas.getContext('2d');
@@ -63,7 +63,7 @@ export async function drawTeamCard(card) {
   g.fillStyle = bg;
   g.fillRect(0, 0, W, H);
 
-  const sprites = await Promise.all([card.sprite(card.bossDex), ...card.members.map((m) => card.sprite(m.dex, m.shiny))].map(loadImage));
+  const sprites = await Promise.all([card.sprite(card.bossKey), ...card.members.map((m) => card.sprite(m.key, m.shiny))].map(loadImage));
 
   // Header: boss name, tier, sprite, weaknesses.
   g.fillStyle = '#9ca3af';
