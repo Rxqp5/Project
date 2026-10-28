@@ -32,7 +32,7 @@ function fold(line) {
   return out.join('\r\n');
 }
 
-// events: [{ uid, title, start, end, description?, url?, alarmMinutes? }]
+// events: [{ uid, title, start, end, description?, url?, alarmMinutes? | alarms?: [minutes before] }]
 export function toIcs(events, { name = 'Raid Boss Guide', stamp = new Date() } = {}) {
   const dtstamp = `${stamp.getUTCFullYear()}${pad(stamp.getUTCMonth() + 1)}${pad(stamp.getUTCDate())}T${pad(stamp.getUTCHours())}${pad(stamp.getUTCMinutes())}00Z`;
   const lines = [
@@ -44,9 +44,9 @@ export function toIcs(events, { name = 'Raid Boss Guide', stamp = new Date() } =
       `DTSTART:${icsTime(e.start)}`, `DTEND:${icsTime(e.end)}`, `SUMMARY:${escapeText(e.title)}`);
     if (e.description) lines.push(`DESCRIPTION:${escapeText(e.description)}`);
     if (e.url) lines.push(`URL:${e.url}`);
-    if (e.alarmMinutes != null) {
+    for (const minutes of e.alarms || (e.alarmMinutes != null ? [e.alarmMinutes] : [])) {
       lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${escapeText(e.title)}`,
-        `TRIGGER:-PT${e.alarmMinutes}M`, 'END:VALARM');
+        `TRIGGER:-PT${minutes}M`, 'END:VALARM');
     }
     lines.push('END:VEVENT');
   }
