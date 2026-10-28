@@ -84,7 +84,12 @@ function saveSettings() {
 }
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const sprite = (dex, shiny = false) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${shiny ? 'shiny/' : ''}${dex}.png`;
+// A Pokémon's sprite, by its key (so forms, Megas and Gigantamax get their own) or by Pokédex number.
+function sprite(keyOrDex, shiny = false) {
+  const p = typeof keyOrDex === 'string' ? data.pokemon[keyOrDex] : null;
+  const id = p ? p.sprite || p.dex : keyOrDex;
+  return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${shiny ? 'shiny/' : ''}${id}.png`;
+}
 const typeBadge = (t) => `<span class="type type-${t.toLowerCase()}">${t}</span>`;
 const typeBadges = (types) => types.map(typeBadge).join('');
 const moveName = (id) => data.moves[id].name;
@@ -169,7 +174,7 @@ function renderGrid() {
       const p = data.pokemon[r.key];
       return `
         <a class="card" href="#/boss/${r.tier}/${r.key}">
-          <img src="${sprite(p.dex)}" alt="" loading="lazy" width="72" height="72" onerror="this.style.visibility='hidden'">
+          <img src="${sprite(r.key)}" alt="" loading="lazy" width="72" height="72" onerror="this.style.visibility='hidden'">
           <div class="card-body">
             <span><span class="tier tier-${r.tier}">${TIER_SHORT[r.tier]}</span> ${statusBadge(r)}</span>
             <strong>${favStar(r.key)}${esc(bossName(r))}</strong>
@@ -218,7 +223,7 @@ function renderBoss(tier, key, bossMoves) {
   app.innerHTML = `
     <a href="#/bosses" class="back">← All raid bosses</a>
     <section class="boss-head">
-      <img src="${sprite(p.dex)}" alt="" width="120" height="120" onerror="this.style.visibility='hidden'">
+      <img src="${sprite(key)}" alt="" width="120" height="120" onerror="this.style.visibility='hidden'">
       <div>
         <span class="tier tier-${tier}">${TIERS[tier].label} ${isMax ? 'Max Battle' : 'raid'}</span> ${statusBadge(raid)}
         <h1>${esc(name)} <small>#${p.dex}</small></h1>
@@ -337,7 +342,7 @@ function openShare(tier, key, battle) {
   const mv = (id) => ({ name: data.moves[id].name, type: data.moves[id].type });
   const member = (c) => {
     const owned = c.entryId !== undefined;
-    const base = { dex: c.dex, name: c.name, shiny: owned && c.shiny };
+    const base = { key: c.key, name: c.name, shiny: owned && c.shiny };
     if (c.role === 'Tank') return { ...base, detail: `Tank · survives ~${Math.round(c.survival)}s${owned ? ` · CP ${c.cp}` : ''}`, moves: [] };
     const moves = c.role
       ? [mv(c.fast), { name: `${c.gmaxMove ? 'G-Max' : 'Max'} ${c.maxType} move`, type: c.maxType }]
@@ -351,7 +356,7 @@ function openShare(tier, key, battle) {
       card: {
         title: bossName(raid),
         subtitle: `${TIERS[tier].label} ${TIERS[tier].max ? 'Max Battle' : 'raid'}`,
-        bossDex: p.dex,
+        bossKey: key,
         weak: matchups(p.types, data).filter((t) => t.mult > 1.001),
         heading: label,
         members: team.map(member),
@@ -486,7 +491,7 @@ function maxSections(key, tier, bossMoves) {
 function maxTeamCard(c, maxMove, owned = false) {
   return `
     <li>
-      <img src="${sprite(c.dex, owned && c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+      <img src="${sprite(c.key, owned && c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
       <span class="status">${c.role}</span>
       <strong>${esc(c.name)}</strong>
       ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}</span>` : ''}
@@ -507,7 +512,7 @@ function superMegaPanel(shields, breakers, tier) {
       <ol class="party-list">
         ${breakers.map((c) => `
           <li>
-            <img src="${sprite(c.dex)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+            <img src="${sprite(c.key)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
             <strong>${esc(c.name)}</strong>
             <span>${moveBadge(c.fast, data.pokemon[c.key].eliteFast.includes(c.fast))}</span>
             <span>${moveBadge(c.charged, data.pokemon[c.key].eliteCharged.includes(c.charged))}</span>
@@ -554,7 +559,7 @@ function partyBlock(title, party, tier, shields, blurb, { owned = false } = {}) 
       <ol class="party-list">
         ${party.map((c) => `
           <li>
-            <img src="${sprite(c.dex, owned && c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+            <img src="${sprite(c.key, owned && c.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
             <strong>${esc(c.name)}${owned && c.shiny ? ' ✨' : ''}</strong>
             ${owned ? `<span class="muted">CP ${c.cp} · Lv ${c.level}${c.movesUnknown ? ' · moves not checked' : ''}</span>` : ''}
             <span>${moveBadge(c.fast, data.pokemon[c.key].eliteFast.includes(c.fast))}</span>
@@ -707,7 +712,7 @@ function rotationRow(item) {
   const fav = p && favourites.has(item.key);
   const row = `
     <a class="rot ${item.kind === 'special' ? 'rot-special' : ''}${fav ? ' rot-fav' : ''}" href="${esc(href)}" ${p ? '' : 'target="_blank" rel="noopener"'}>
-      ${p ? `<img src="${sprite(p.dex)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">★</span>'}
+      ${p ? `<img src="${sprite(item.key)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">★</span>'}
       <span class="rot-body">
         <span><span class="tier tier-${item.kind === 'special' ? 'special' : item.tier}">${label}</span>
           ${item.first && item.kind === 'boss' && item.startsToday ? '<span class="status status-soon">Starts today</span>' : ''}</span>

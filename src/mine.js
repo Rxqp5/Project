@@ -117,7 +117,7 @@ export function renderMine(app, ctx) {
       .filter(Boolean);
     return `
       <li class="mine-card">
-        <img src="${sprite(p.dex, e.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
+        <img src="${sprite(e.key, e.shiny)}" alt="" loading="lazy" width="56" height="56" onerror="this.style.visibility='hidden'">
         <div class="mine-body">
           <strong><a href="#/pokemon/${e.key}">${e.shadow ? 'Shadow ' : ''}${esc(p.name)}</a></strong> <span class="muted">CP ${e.cp} · Lv ${e.level}</span>
           <div>${typeBadges(p.types)}</div>
@@ -151,7 +151,7 @@ export function renderMine(app, ctx) {
     const p = d.key && data.pokemon[d.key];
     return `
       <li class="mine-card">
-        ${p ? `<img src="${sprite(p.dex, d.shiny)}" alt="" width="56" height="56" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">?</span>'}
+        ${p ? `<img src="${sprite(d.key, d.shiny)}" alt="" width="56" height="56" onerror="this.style.visibility='hidden'">` : '<span class="rot-icon">?</span>'}
         <div class="mine-body">
           <strong>${p ? `${d.shadow ? 'Shadow ' : ''}${esc(p.name)}` : 'Unknown Pokémon'}${d.shiny ? ' ✨' : ''}</strong>
           ${d.source === 'storage' && d.name && (!p || d.name !== p.name) ? `<span class="muted">Named "${esc(d.name)}"</span>` : ''}
@@ -213,7 +213,7 @@ export function renderMine(app, ctx) {
     const p = data.pokemon[e.key];
     return `
           <li class="mine-card">
-            <img src="${sprite(p.dex, e.shiny)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
+            <img src="${sprite(e.key, e.shiny)}" alt="" loading="lazy" width="48" height="48" onerror="this.style.visibility='hidden'">
             <div class="mine-body">
               <strong>${e.shadow ? 'Shadow ' : ''}${esc(p.name)}</strong> <span class="muted">CP ${e.cp}</span>
               <span class="hint">In your best team for ${bosses.length} raid${bosses.length > 1 ? 's' : ''}:
