@@ -18,6 +18,8 @@ For each boss the app gives:
 
 **Add from screenshots:** on My Pokémon, pick screenshots of your Pokémon's pages from Pokémon GO (several at once). The app reads the species (even with a nickname, from its candy and moves), CP, HP, current moves, Shadow and Dynamax/Gigantamax. From the CP, HP and power-up stardust cost it works out the exact level and often the exact IVs. Misread CP digits are corrected by picking the closest CP that fits the HP and stardust. Text recognition ([Tesseract.js](https://github.com/naptha/tesseract.js)) runs on the device, so screenshots are never uploaded. You check each Pokémon before it's added.
 
+**Import from your storage list:** screenshots of the storage grid (sorted by CP) add lots of Pokémon at once. The app reads each tile's name and CP, ignoring the stars and sparkles. It picks the form that fits the CP (e.g. Crowned Zacian), spots Mega Evolutions active now (red CP) and flags nicknames for you to pick. Storage doesn't show moves, so each one gets its usual raid moveset and is marked "moves not checked". Scanning that Pokémon's own page later fills in its real moves.
+
 **Power up?** gives a verdict for each of your Pokémon (power up, raid-ready, only with spare stardust, or don't power up). It's based on how it ranks among the best attackers of its type and how it would do at level 40 against the raid bosses running now or in the next two weeks. It shows the stardust and candy cost to level 40, and tips like "TM it first" or "low Attack IV".
 
 **Look up** shows any Pokémon's raid value: type rankings, best movesets, which current bosses it's good against, its weaknesses, and advice for your copies. You can also look one up from a screenshot.

@@ -2,7 +2,8 @@
 // Tesseract.js), then working out the species, CP, HP, moves, level and IVs from the text.
 // Everything except `readScreenshot` is a pure function, shared by the app and the tests.
 
-import { cpmAt, cpAt, MAX_LEVEL } from './collection.js';
+import { cpmAt, cpAt, MAX_LEVEL, estimateLevel } from './collection.js';
+import { bestMovesetsOverall } from './calc.js';
 
 // ---------- Text helpers ----------
 
@@ -278,6 +279,131 @@ export function mergeScreens(parsedList) {
   return merged;
 }
 
+// ---------- Storage list (the grid of all your Pokémon) ----------
+
+// Storage screenshots show three columns of tiles: "CP 3045" above the sprite, the name (or
+// nickname) below. Words come from text recognition with their positions.
+export function isStorageGrid(words) {
+  const text = words.map((w) => w.text.toUpperCase()).join(' ');
+  // A Pokémon's own page has a POWER UP button; storage doesn't.
+  if (/\bPOWER\b/.test(text)) return false;
+  if (/\bPOK[EÉ]MON\b/.test(text) && /\bSEARCH\b|\bEGGS\b|\bTAGS\b/.test(text)) return true;
+  return words.filter((w) => /^\d{3,4}$/.test(w.text)).length >= 6;
+}
+
+export function parseGrid(words, width) {
+  const colOf = (w) => Math.min(2, Math.floor((((w.x0 + w.x1) / 2) / width) * 3));
+  const tileHeight = (width / 3) * 1.35;
+  const rowTolerance = width * 0.025;
+  const digits = (w) => w.text.replace(/[,.]/g, '');
+  let cps = words.filter((w) => /^\d{2,5}$/.test(digits(w)));
+  // Real CPs line up across a row of tiles; stray numbers from sprites don't.
+  if (cps.length >= 3) {
+    cps = cps.filter((c) => cps.some((o) => o !== c && colOf(o) !== colOf(c) && Math.abs(o.y0 - c.y0) < rowTolerance));
+  }
+  // Names: words with letters, grouped per column into lines.
+  const nameWords = words.filter((w) => /[A-Za-z]/.test(w.text) && !/^(CP|SEARCH|POKEMON|POKÉMON|TAGS|EGGS)$/i.test(w.text));
+  const lines = [];
+  for (const w of [...nameWords].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0)) {
+    const col = colOf(w);
+    const line = lines.find((l) => l.col === col && Math.abs(l.y - w.y0) < rowTolerance);
+    if (line) line.words.push(w);
+    else lines.push({ col, y: w.y0, words: [w] });
+  }
+  const firstCpY = Math.min(...cps.map((c) => c.y0));
+  const tiles = [];
+  for (const line of lines) {
+    // Tiles cut off at the top of the screen (their CP scrolled away) are in the previous screenshot.
+    if (line.y < firstCpY) continue;
+    // The CP sits above the name, within one tile.
+    const cp = cps
+      .filter((c) => colOf(c) === line.col && c.y0 < line.y && line.y - c.y0 < tileHeight)
+      .sort((a, b) => b.y0 - a.y0)[0];
+    const name = line.words.sort((a, b) => a.x0 - b.x0).map((w) => w.text).join(' ')
+      .replace(/^[^A-Za-z]+/, '').replace(/[^A-Za-z0-9'’.\- ]/g, '').trim();
+    if (name.length >= 2) tiles.push({ name, cpText: cp ? digits(cp) : '', col: line.col, y: line.y, offset: cp ? line.y - cp.y0 : null });
+  }
+  return tiles;
+}
+
+// Names sit the same distance below their CP on every tile. Lines at another distance are
+// words the text reader found in sprites, so they're dropped (judged against lines that are
+// clearly Pokémon names).
+export function dropSpriteNoise(tiles, isName, width) {
+  const known = tiles.filter((t) => t.offset !== null && isName(t.name)).map((t) => t.offset).sort((a, b) => a - b);
+  if (!known.length) return tiles.filter((t) => t.offset !== null);
+  const median = known[Math.floor(known.length / 2)];
+  const rowY = new Set(tiles.filter((t) => isName(t.name)).map((t) => Math.round(t.y / (width * 0.05))));
+  return tiles.filter((t) => (t.offset !== null ? Math.abs(t.offset - median) < width * 0.05
+    : rowY.has(Math.round(t.y / (width * 0.05)))));
+}
+
+// Turns storage tiles into Pokémon. The species comes from the name when it isn't a nickname.
+// The CP must be possible for that species; a CP too high for it is a Mega Evolution active right
+// now. Moves aren't shown in storage, so `movesUnknown` drafts get the species' best moves.
+export function readGridTiles(tiles, data, width) {
+  const species = Object.entries(data.pokemon).filter(([, p]) => p.released && !p.mega && !p.gmax && p.fast.length);
+  const maxCp = (p) => cpAt(p, cpmAt(data, MAX_LEVEL), { atk: 15, def: 15, sta: 15 });
+  const minCp = (p) => cpAt(p, cpmAt(data, 1), { atk: 0, def: 0, sta: 0 });
+  const fits = (p, cp) => cp >= minCp(p) && cp <= maxCp(p);
+  // Every form of the species whose name best matches (Kyurem, Kyurem (Black), Kyurem (White)…).
+  const matchSpecies = (text) => {
+    const name = clean(text);
+    let bestScore = 0;
+    let forms = [];
+    for (const [key, p] of species) {
+      const score = bestLineMatch([name], clean(p.name.replace(/\s*\(.*\)$/, '')));
+      if (score < 0.8 || score < bestScore) continue;
+      if (score > bestScore) forms = [];
+      bestScore = score;
+      forms.push(key);
+    }
+    return forms;
+  };
+  const isName = (text) => matchSpecies(text).length > 0;
+  return dropSpriteNoise(tiles, isName, width).map((t) => {
+    const cp = Number(t.cpText) || null;
+    const draft = { source: 'storage', name: t.name, key: null, cp, problems: [], movesUnknown: true, fast: null, charged: [] };
+    const forms = matchSpecies(t.name);
+    if (!forms.length) {
+      draft.problems.push(`"${t.name}" looks like a nickname: pick the Pokémon.`);
+      return draft;
+    }
+    // Prefer the plain form, unless only another form (or a Mega, Evolved right now) can have this CP.
+    const plain = forms.find((k) => !data.pokemon[k].name.includes('(')) || forms[0];
+    const fitting = cp ? forms.filter((k) => fits(data.pokemon[k], cp)) : forms;
+    let key = fitting.includes(plain) ? plain : fitting[0];
+    if (cp && !key) {
+      const mega = Object.entries(data.pokemon).find(([, m]) => forms.includes(m.base) && m.mega && m.released && fits(m, cp));
+      if (mega) {
+        key = mega[1].base;
+        draft.mega = true;
+        draft.megaActive = mega[0];
+      } else {
+        key = plain;
+        draft.cp = null;
+        draft.problems.push('CP not read clearly; enter it.');
+      }
+    }
+    if (!cp) draft.problems.push('CP not read clearly; enter it.');
+    if (key !== plain && fitting.length > 1) draft.problems.push(`Check the form: it could be ${fitting.map((k) => data.pokemon[k].name).join(' or ')}.`);
+    else if (key !== plain) draft.problems.push(`Its CP means it's ${data.pokemon[key].name}; check that's right.`);
+    draft.key = key;
+    // Storage doesn't show moves, so assume the usual raid moveset until its own page is scanned:
+    // its best TM-able pair where both moves match one of its own types (or else its best pair).
+    const p = data.pokemon[key];
+    const sets = bestMovesetsOverall(p, data, { elite: false });
+    const stab = (m) => data.moves[m.fast].type === data.moves[m.charged].type && p.types.includes(data.moves[m.fast].type);
+    const best = sets.find(stab) || sets[0];
+    if (best) {
+      draft.fast = best.fast;
+      draft.charged = [best.charged];
+    }
+    if (draft.cp) draft.level = estimateLevel(data, data.pokemon[draft.megaActive || key], draft.cp);
+    return draft;
+  });
+}
+
 // ---------- Text recognition (browser only) ----------
 
 const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -298,10 +424,14 @@ function getWorker() {
   return workerPromise;
 }
 
-// Pokémon GO mixes dark text on light panels with white text on artwork, so the image is read
-// as a high-contrast greyscale image, inverted, and (for the CP at the top) the top quarter with
-// only its near-white pixels kept, as black on white, at full and half size. Enlarging the image
-// makes the thin CP digits misread, so it's only ever shrunk (to phone-screenshot width).
+// Pokémon GO mixes dark text on light panels with white text on artwork, so a screenshot is read
+// several ways:
+//   - "dark text": only dark grey (and red Mega CP) pixels kept, which removes the stars and
+//     sparkles around CPs in storage; read with word positions to spot the storage grid;
+//   - high-contrast greyscale, and inverted;
+//   - the top quarter with only near-white pixels kept (the CP on a Pokémon's page), at full and
+//     half size.
+// Enlarging the image makes the thin CP digits misread, so it's only ever shrunk.
 async function preparedImages(file) {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, 1290 / bitmap.width);
@@ -311,20 +441,27 @@ async function preparedImages(file) {
   const g = canvas.getContext('2d', { willReadFrequently: true });
   g.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   const img = g.getImageData(0, 0, canvas.width, canvas.height);
-  const grey = new Uint8ClampedArray(img.data.length / 4);
-  for (let i = 0; i < grey.length; i++) {
-    const v = 0.299 * img.data[i * 4] + 0.587 * img.data[i * 4 + 1] + 0.114 * img.data[i * 4 + 2];
-    grey[i] = Math.max(0, Math.min(255, (v - 128) * 1.6 + 128));
-  }
-  const render = (invert) => {
+  const n = img.data.length / 4;
+  const mono = (keep) => {
     const out = g.createImageData(canvas.width, canvas.height);
-    for (let i = 0; i < grey.length; i++) {
-      const v = invert ? 255 - grey[i] : grey[i];
+    for (let i = 0; i < n; i++) {
+      const v = keep(img.data[i * 4], img.data[i * 4 + 1], img.data[i * 4 + 2]);
       out.data.set([v, v, v, 255], i * 4);
     }
     g.putImageData(out, 0, 0);
     return canvas.toDataURL('image/png');
   };
+  const lum = (r, gr, b) => 0.299 * r + 0.587 * gr + 0.114 * b;
+  const contrast = (r, gr, b) => Math.max(0, Math.min(255, (lum(r, gr, b) - 128) * 1.6 + 128));
+  const darkText = mono((r, gr, b) => {
+    const sat = Math.max(r, gr, b) - Math.min(r, gr, b);
+    const red = r > 170 && gr < 110 && b < 110;
+    return (lum(r, gr, b) < 120 && sat < 60) || red ? 0 : 255;
+  });
+  const grey = mono(contrast);
+  const inverted = mono((r, gr, b) => 255 - contrast(r, gr, b));
+  const width = canvas.width;
+  // White text in the top quarter only (the white card further down would turn into a black block).
   const top = Math.round(canvas.height * 0.25);
   const whiteText = g.createImageData(canvas.width, top);
   for (let i = 0; i < canvas.width * top; i++) {
@@ -332,23 +469,24 @@ async function preparedImages(file) {
     const white = Math.min(r, gr, b) > 225 && Math.max(r, gr, b) - Math.min(r, gr, b) < 30;
     whiteText.data.set(white ? [0, 0, 0, 255] : [255, 255, 255, 255], i * 4);
   }
-  const passes = [render(false), render(true)];
   canvas.height = top;
   g.putImageData(whiteText, 0, 0);
-  passes.push(canvas.toDataURL('image/png'));
+  const cpFull = canvas.toDataURL('image/png');
   const half = Object.assign(document.createElement('canvas'), { width: Math.round(canvas.width / 2), height: Math.round(top / 2) });
   half.getContext('2d').drawImage(canvas, 0, 0, half.width, half.height);
-  passes.push(half.toDataURL('image/png'));
-  return passes;
+  return { width, darkText, others: [grey, inverted, cpFull, half.toDataURL('image/png')] };
 }
 
-// Reads one screenshot and returns its parsed text.
+// Reads one screenshot. A storage screenshot gives { kind: 'storage', tiles, width }; a Pokémon's
+// own page gives { kind: 'pokemon', parsed }.
 export async function readScreenshot(file) {
   const worker = await getWorker();
-  const texts = [];
-  for (const image of await preparedImages(file)) {
-    const { data } = await worker.recognize(image);
-    texts.push(data.text);
-  }
-  return parseScreen(texts.join('\n'));
+  const { width, darkText, others } = await preparedImages(file);
+  const { data } = await worker.recognize(darkText, {}, { blocks: true, text: true });
+  const words = (data.blocks || []).flatMap((b) => b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words)))
+    .map((w) => ({ text: w.text, x0: w.bbox.x0, y0: w.bbox.y0, x1: w.bbox.x1, y1: w.bbox.y1 }));
+  if (isStorageGrid(words)) return { kind: 'storage', tiles: parseGrid(words, width), width };
+  const texts = [data.text];
+  for (const image of others) texts.push((await worker.recognize(image)).data.text);
+  return { kind: 'pokemon', parsed: parseScreen(texts.join('\n')) };
 }
