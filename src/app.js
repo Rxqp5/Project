@@ -12,6 +12,7 @@ import { toIcs } from './calendar.js';
 import { renderTypes } from './types-page.js';
 import { openShareDialog } from './share.js';
 import { renderMax } from './max-page.js';
+import { renderEvents } from './events-page.js';
 
 const app = document.getElementById('app');
 const TIER_ORDER = ['1', '2', '3', '4', '5', 'elite', 'shadow_1', 'shadow_3', 'shadow_5',
@@ -596,6 +597,7 @@ function route({ keepScroll = false } = {}) {
   else if (page === 'mine') renderMine(app, pageContext());
   else if (page === 'types') renderTypes(app, pageContext(), tier);
   else if (page === 'max') renderMax(app, pageContext());
+  else if (page === 'events') renderEvents(app, { ...pageContext(), schedule }, tier);
   else if (page === 'powerup') renderPowerUp(app, pageContext());
   else if (page === 'pokemon') renderPokemon(app, pageContext(), tier);
   else renderRotation();
@@ -800,7 +802,7 @@ async function loadSchedule() {
     // Offline or the feed is down: keep the copy saved when the data was built.
   }
   const page = location.hash.split('/')[1];
-  if (!page || ['powerup', 'pokemon', 'boss', 'mine', 'max'].includes(page)) route({ keepScroll: true });
+  if (!page || ['powerup', 'pokemon', 'boss', 'mine', 'max', 'events'].includes(page)) route({ keepScroll: true });
 }
 
 async function start() {
