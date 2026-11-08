@@ -14,6 +14,8 @@ For each boss the app gives:
 - **Super Mega raids**: shield count, how the shields work, and the best Megas to bring (every trainer needs one)
 - **Max Battles**: the best Dynamax/Gigantamax attackers (ranked by Max Attack damage), the best tanks, and a suggested team of three
 
+**Events:** every Pokémon GO event, in the order it starts around the world. Most events (Community Days, Raid Hours, Spotlight Hours, raid rotations) run at each country's local time, so they start first in Kiribati (UTC+14) and last in American Samoa (UTC−11), about a day later. Each event lists every country in the order it starts there, with the local time, your time and the **coordinates of a raid spot** (a busy area with lots of gyms close together in a big city, with a spot per main time zone for large countries like the US, Canada, Australia and Russia). In-person events (GO Fest, GO Tour, Safari Zones, Wild Areas, Night Out) show the **city's coordinates** and a map. Pick a country to see only its events, in the order they start there. Coordinates can be copied or opened in Google Maps. Raid spots are curated by hand (Pokémon GO has no public gym data); in-person cities not in the list are looked up on OpenStreetMap.
+
 **My Pokémon:** add the Pokémon you own (species, CP, moves, and optionally Shadow, can Mega Evolve, Dynamax/Gigantamax and IVs). The app works out each one's level from its CP. Every boss page then shows **your best team** next to the best possible team, plus TM tips ("TM your Tyranitar to Brutal Swing for about 19% more damage"). Your list is saved on your device only, and you can download it as a backup file and load it again on another device. Pokémon GO has no official way for apps to read your account, so the list is entered by hand.
 
 **Add from screenshots:** on My Pokémon, pick screenshots of your Pokémon's pages from Pokémon GO (several at once). The app reads the species (even with a nickname, from its candy and moves), CP, HP, current moves, Shadow and Dynamax/Gigantamax. From the CP, HP and power-up stardust cost it works out the exact level and often the exact IVs. Misread or partly hidden CP digits are corrected by picking the CP that best fits the HP and power-up cost; the cost is recognised from its numbers even when the button label isn't read. It also handles a Mega Evolution that's active now (pink CP and Mega stats), Shadow Pokémon (with the Purify cost ruled out), nicknames with no candy shown (identified from their moves), and Mega moves like Future Sight+. Tested on real iPhone screenshots (`tests/real-pages.test.mjs`). Text recognition ([Tesseract.js](https://github.com/naptha/tesseract.js)) runs on the device, so screenshots are never uploaded. You check each Pokémon before it's added.
@@ -74,6 +76,8 @@ npm run build:data # re-download game data and rebuild data/game.json
 | `src/pokemon-pages.js` | The Power up? and Look up pages |
 | `src/types-page.js` | The type chart and per-type pages |
 | `src/max-page.js` | The Max Battles page |
+| `src/events.js`, `src/events-page.js` | The Events page: when each event starts in each country |
+| `src/places.js` | Raid spots per country and in-person event cities, with coordinates and time zones |
 | `src/share.js` | Team pictures for sharing |
 | `src/calendar.js` | Calendar (.ics) files for reminders, shared by the app and the build |
 | `data/raid-calendar.ics` | Generated: subscribable calendar of raid events |
